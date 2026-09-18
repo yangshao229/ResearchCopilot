@@ -2,6 +2,7 @@ from pathlib import Path
 
 from research_copilot.page_store import load_page_data, save_page_data
 
+
 def test_save_and_load_page_data_preserves_content(tmp_path: Path) -> None:
     page_data = {
         "source_pdf": "paper.pdf",
@@ -14,5 +15,5 @@ def test_save_and_load_page_data_preserves_content(tmp_path: Path) -> None:
 
     save_page_data(page_data, output_path)
     loaded_data = load_page_data(output_path)
-    
+
     assert loaded_data == page_data
