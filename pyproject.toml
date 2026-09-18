@@ -6,7 +6,9 @@ authors = [
     { name = "yangshao229", email = "238594025+yangshao229@users.noreply.github.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "pypdf>=6.19.0",
+]
 
 [project.scripts]
 research-copilot = "research_copilot:main"
