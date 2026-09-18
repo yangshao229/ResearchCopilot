@@ -1,0 +1,21 @@
+[project]
+name = "research-copilot"
+version = "0.1.0"
+description = "Add your description here"
+authors = [
+    { name = "yangshao229", email = "238594025+yangshao229@users.noreply.github.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+research-copilot = "research_copilot:main"
+
+[build-system]
+requires = ["uv_build>=0.12.13,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]

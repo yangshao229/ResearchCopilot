@@ -1,0 +1,30 @@
+# Python bytecode and tool caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local secrets and machine-specific configuration
+.env
+.env.*
+!.env.example
+
+# Models, caches, indexes, and generated data
+models/
+model_cache/
+cache/
+data/raw/
+data/processed/
+indexes/
+artifacts/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
