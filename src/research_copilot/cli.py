@@ -2,8 +2,12 @@ import argparse
 from pathlib import Path
 
 from research_copilot.paper_card import write_paper_card
-from research_copilot.paper_search import search_page_data
+from research_copilot.paper_search import (
+    search_page_data,
+    semantic_search_page_data,
+)
 from research_copilot.pdf_importer import import_pdf_to_json
+from research_copilot.semantic_retriever import DEFAULT_EMBEDDING_MODEL
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,6 +72,35 @@ def build_parser() -> argparse.ArgumentParser:
         default=100,
     )
 
+    semantic_parser = subparsers.add_parser(
+        "semantic-search",
+        help="Search an imported paper with multilingual embeddings.",
+    )
+    semantic_parser.add_argument(
+        "page_data_path",
+        type=Path,
+    )
+    semantic_parser.add_argument("query")
+    semantic_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+    )
+    semantic_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=1000,
+    )
+    semantic_parser.add_argument(
+        "--overlap",
+        type=int,
+        default=100,
+    )
+    semantic_parser.add_argument(
+        "--model",
+        default=DEFAULT_EMBEDDING_MODEL,
+    )
+
     return parser
 
 
@@ -95,22 +128,34 @@ def main() -> None:
         )
         return
 
-    results = search_page_data(
-        args.page_data_path,
-        args.query,
-        chunk_size=args.chunk_size,
-        overlap=args.overlap,
-        limit=args.limit,
-    )
+    if args.command == "semantic-search":
+        results = semantic_search_page_data(
+            args.page_data_path,
+            args.query,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+            limit=args.limit,
+            model_name=args.model,
+        )
+    else:
+        results = search_page_data(
+            args.page_data_path,
+            args.query,
+            chunk_size=args.chunk_size,
+            overlap=args.overlap,
+            limit=args.limit,
+        )
 
     if not results:
         print("No matches found.")
         return
 
     for result in results:
+        score = result["score"]
+        score_text = f"{score:.4f}" if isinstance(score, float) else str(score)
         print(
             f'Page {result["source_page"]} '
-            f'| score={result["score"]}'
+            f"| score={score_text}"
         )
         print(result["text"])
         print()
