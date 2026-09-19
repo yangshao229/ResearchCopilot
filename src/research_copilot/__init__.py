@@ -1,2 +1,3 @@
-def main() -> None:
-    print("Hello from research-copilot!")
+from research_copilot.cli import main
+
+__all__ = ["main"]

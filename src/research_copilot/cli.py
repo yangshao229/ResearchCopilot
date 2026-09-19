@@ -1,0 +1,116 @@
+import argparse
+from pathlib import Path
+
+from research_copilot.paper_card import write_paper_card
+from research_copilot.paper_search import search_page_data
+from research_copilot.pdf_importer import import_pdf_to_json
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="research-copilot",
+        description="Import and search research papers.",
+    )
+
+    subparsers = parser.add_subparsers(
+        dest="command",
+        required=True,
+    )
+
+    import_parser = subparsers.add_parser(
+        "import",
+        help="Import a PDF as page-aware JSON.",
+    )
+    import_parser.add_argument(
+        "pdf_path",
+        type=Path,
+    )
+    import_parser.add_argument(
+        "output_path",
+        type=Path,
+    )
+
+    card_parser = subparsers.add_parser(
+        "card",
+        help="Create a human-reviewable Obsidian Markdown draft.",
+    )
+    card_parser.add_argument(
+        "page_data_path",
+        type=Path,
+    )
+    card_parser.add_argument(
+        "output_path",
+        type=Path,
+    )
+
+    search_parser = subparsers.add_parser(
+        "search",
+        help="Search an imported paper.",
+    )
+    search_parser.add_argument(
+        "page_data_path",
+        type=Path,
+    )
+    search_parser.add_argument("query")
+    search_parser.add_argument(
+        "--limit",
+        type=int,
+        default=5,
+    )
+    search_parser.add_argument(
+        "--chunk-size",
+        type=int,
+        default=1000,
+    )
+    search_parser.add_argument(
+        "--overlap",
+        type=int,
+        default=100,
+    )
+
+    return parser
+
+
+def main() -> None:
+    args = build_parser().parse_args()
+
+    if args.command == "import":
+        import_pdf_to_json(
+            args.pdf_path,
+            args.output_path,
+        )
+        print(
+            f"Imported {args.pdf_path.name} "
+            f"-> {args.output_path}"
+        )
+        return
+
+    if args.command == "card":
+        write_paper_card(
+            args.page_data_path,
+            args.output_path,
+        )
+        print(
+            f"Created review draft -> {args.output_path}"
+        )
+        return
+
+    results = search_page_data(
+        args.page_data_path,
+        args.query,
+        chunk_size=args.chunk_size,
+        overlap=args.overlap,
+        limit=args.limit,
+    )
+
+    if not results:
+        print("No matches found.")
+        return
+
+    for result in results:
+        print(
+            f'Page {result["source_page"]} '
+            f'| score={result["score"]}'
+        )
+        print(result["text"])
+        print()
