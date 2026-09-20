@@ -1,6 +1,6 @@
 # 面向科研论文的 AI 学习与研究助手
 
-完整的产品功能、阅读流程、页面结构与开发阶段见 [产品蓝图](docs/PRODUCT_BLUEPRINT.md)。
+完整的产品功能、阅读流程、页面结构与开发阶段见 [产品蓝图](docs/PRODUCT_BLUEPRINT.md)。各阶段新增文件和以后需要补学的知识点记录在 [分阶段学习地图](docs/LEARNING_MAP.md)。
 
 ## 项目定位
 
