@@ -2,17 +2,20 @@ from __future__ import annotations
 
 import hashlib
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 
+from research_copilot.paper_search_service import PaperSearchService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAPER_DIRECTORY = PROJECT_ROOT / "data" / "raw"
+DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
 
 
@@ -21,6 +24,27 @@ class PaperSummary(BaseModel):
     name: str
     relative_path: str
     page_count: int | None
+
+
+class PaperSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    mode: Literal["keyword", "semantic"] = "semantic"
+    limit: int = Field(default=5, ge=1, le=10)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_contain_text(cls, value: str) -> str:
+        stripped_value = value.strip()
+        if not stripped_value:
+            raise ValueError("query must contain text")
+        return stripped_value
+
+
+class PaperSearchResult(BaseModel):
+    source_page: int
+    chunk_index: int
+    text: str
+    score: float
 
 
 class PaperLibrary:
@@ -44,9 +68,8 @@ class PaperLibrary:
         paths: list[Path] = []
         for path in self.paper_directory.rglob("*.pdf"):
             resolved_path = path.resolve()
-            if (
-                resolved_path.is_file()
-                and resolved_path.is_relative_to(self.paper_directory)
+            if resolved_path.is_file() and resolved_path.is_relative_to(
+                self.paper_directory
             ):
                 paths.append(resolved_path)
 
@@ -78,10 +101,15 @@ class PaperLibrary:
 
 def create_app(
     paper_directory: Path | None = None,
+    processed_directory: Path | None = None,
     frontend_directory: Path | None = None,
+    search_service: PaperSearchService | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
+    searcher = search_service or PaperSearchService(
+        processed_directory or DEFAULT_PROCESSED_DIRECTORY
+    )
 
     app = FastAPI(
         title="ResearchCopilot",
@@ -93,7 +121,7 @@ def create_app(
             "http://127.0.0.1:5173",
             "http://localhost:5173",
         ],
-        allow_methods=["GET"],
+        allow_methods=["GET", "POST"],
         allow_headers=["*"],
     )
 
@@ -118,6 +146,30 @@ def create_app(
         return FileResponse(
             paper_path,
             media_type="application/pdf",
+        )
+
+    @app.post(
+        "/api/papers/{paper_id}/search",
+        response_model=list[PaperSearchResult],
+    )
+    def search_paper(
+        paper_id: str,
+        request: PaperSearchRequest,
+    ) -> list[dict[str, int | float | str]]:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Paper not found.",
+            ) from error
+
+        return searcher.search(
+            paper_path,
+            paper_id,
+            request.query,
+            request.mode,
+            limit=request.limit,
         )
 
     if frontend_path.is_dir():
