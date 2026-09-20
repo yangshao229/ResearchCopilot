@@ -11,6 +11,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 
+from research_copilot.paper_answer_service import (
+    AnswerGenerationError,
+    ModelNotConfiguredError,
+    PaperAnswer,
+    PaperAnswerService,
+)
 from research_copilot.paper_search_service import PaperSearchService
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -104,12 +110,14 @@ def create_app(
     processed_directory: Path | None = None,
     frontend_directory: Path | None = None,
     search_service: PaperSearchService | None = None,
+    answer_service: PaperAnswerService | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
     searcher = search_service or PaperSearchService(
         processed_directory or DEFAULT_PROCESSED_DIRECTORY
     )
+    answerer = answer_service or PaperAnswerService(searcher)
 
     app = FastAPI(
         title="ResearchCopilot",
@@ -171,6 +179,44 @@ def create_app(
             request.mode,
             limit=request.limit,
         )
+
+    @app.post(
+        "/api/papers/{paper_id}/answer",
+        response_model=PaperAnswer,
+    )
+    def answer_paper(
+        paper_id: str,
+        request: PaperSearchRequest,
+    ) -> PaperAnswer:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Paper not found.",
+            ) from error
+
+        try:
+            return answerer.answer(
+                paper_path,
+                paper_id,
+                request.query,
+                request.mode,
+                limit=request.limit,
+            )
+        except ModelNotConfiguredError as error:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "DeepSeek API 尚未配置。请在项目根目录的 .env 中设置 "
+                    "DEEPSEEK_API_KEY。"
+                ),
+            ) from error
+        except AnswerGenerationError as error:
+            raise HTTPException(
+                status_code=502,
+                detail=str(error),
+            ) from error
 
     if frontend_path.is_dir():
         app.mount(

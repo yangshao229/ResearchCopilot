@@ -3,10 +3,14 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
-from research_copilot.web_app import create_app
 from research_copilot.page_store import save_page_data
+from research_copilot.paper_answer_service import (
+    ModelAnswerDraft,
+    PaperAnswerService,
+)
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.semantic_retriever import EmbeddingModel
+from research_copilot.web_app import create_app
 
 
 def create_test_pdf(path: Path, page_count: int = 2) -> None:
@@ -175,3 +179,104 @@ def test_paper_api_rejects_blank_search_query(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 422
+
+
+class AnswerApiFakeModel:
+    provider_name = "fake"
+    model_name = "fake-answer-model"
+
+    def generate(self, question, evidence):
+        return ModelAnswerDraft(
+            answer="Transformer 不使用循环结构，因此能并行处理序列位置。",
+            explanation="证据明确对比了循环网络的顺序计算限制。",
+            cited_evidence_ids=[1],
+            insufficient_evidence=False,
+            uncertainty="证据没有给出完整训练速度比较。",
+        )
+
+
+def test_paper_api_generates_answer_with_verified_page_citation(
+    tmp_path: Path,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    processed_directory = tmp_path / "processed"
+    paper_directory.mkdir()
+    paper_path = paper_directory / "attention.pdf"
+    create_test_pdf(paper_path)
+    search_service = PaperSearchService(processed_directory)
+    answer_service = PaperAnswerService(
+        search_service,
+        AnswerApiFakeModel(),
+    )
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+            search_service=search_service,
+            answer_service=answer_service,
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    processed_directory.mkdir()
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {
+                    "source_page": 2,
+                    "text": (
+                        "Recurrent models are sequential. "
+                        "The Transformer removes recurrence for parallelization."
+                    ),
+                }
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+
+    response = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={"query": "Transformer", "mode": "keyword"},
+    )
+
+    assert response.status_code == 200
+    answer = response.json()
+    assert answer["citations"][0]["source_page"] == 2
+    assert answer["provider"] == "fake"
+    assert answer["evidence"][0]["source_page"] == 2
+
+
+def test_paper_answer_api_explains_missing_deepseek_key(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    paper_path = tmp_path / "attention.pdf"
+    create_test_pdf(paper_path)
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path,
+            processed_directory=tmp_path / "processed",
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    processed_directory = tmp_path / "processed"
+    processed_directory.mkdir()
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {"source_page": 1, "text": "Attention connects positions."}
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+
+    response = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={"query": "attention", "mode": "keyword"},
+    )
+
+    assert response.status_code == 503
+    assert "DEEPSEEK_API_KEY" in response.json()["detail"]

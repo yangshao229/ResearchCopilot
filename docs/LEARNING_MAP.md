@@ -155,6 +155,21 @@ Git：`4b19bb6 feat: connect paper reader to local evidence search`
 
 阶段结论：关键词检索能稳定定位术语；语义检索能用中文查英文，但基础相似度排序可能把参考文献或泛化段落排在真正答案之前，因此后续需要混合检索、重排序和评测。
 
+## M3：基于证据的 DeepSeek 引用回答
+
+新增文件：
+
+- `.env.example`
+- `src/research_copilot/paper_answer_service.py`
+- `tests/test_paper_answer_service.py`
+- `docs/M3_EVALUATION.md`
+
+重要修改：`pyproject.toml`、`uv.lock`、`cli.py`、`web_app.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`App.tsx`、`styles.css`、`README.md`、`PROJECT.md`
+
+以后学习：RAG 的完整数据流、模型提供方抽象、环境变量与密钥管理、Responses API、JSON Schema 结构化输出、Pydantic 校验、服务器端引用白名单、失败关闭原则、前端异步状态、API 错误处理、点击引用跳页、真实问题评测、TLS 与网络客户端差异。
+
+验证结果：29 个自动测试通过；5 个真实问题完成评测；网页真实回答与第 5 页引用跳转通过。当前语义排序仍会混入参考文献，下一阶段进入混合检索和重排序。
+
 ## 后续阶段
 
-每完成一个里程碑，继续在这里记录新增文件、重要修改、验证结果与以后需要讲解的知识点。
+每完成一个后续里程碑，继续在这里记录新增文件、重要修改、验证结果与以后需要讲解的知识点。

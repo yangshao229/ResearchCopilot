@@ -1,8 +1,10 @@
 import { useState } from "react";
 
 import {
+  answerPaper,
   searchPaper,
   type Paper,
+  type PaperAnswer,
   type SearchMode,
   type SearchResult,
 } from "../api";
@@ -42,12 +44,16 @@ export default function AssistantPanel({
   const [completedSearch, setCompletedSearch] =
     useState<CompletedSearch | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [answer, setAnswer] = useState<PaperAnswer | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [isAnswering, setIsAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const isBusy = isSearching || isAnswering;
 
   const runSearch = async () => {
     const query = question.trim();
-    if (!query || isSearching) {
+    if (!query || isBusy) {
       return;
     }
 
@@ -67,6 +73,32 @@ export default function AssistantPanel({
       setError(reason instanceof Error ? reason.message : "证据检索失败。");
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const runAnswer = async () => {
+    const query = question.trim();
+    if (!query || isBusy) {
+      return;
+    }
+
+    setError(null);
+    setIsAnswering(true);
+
+    try {
+      const paperAnswer = await answerPaper(
+        paper.id,
+        query,
+        searchMode,
+      );
+      setAnswer(paperAnswer);
+      setResults(paperAnswer.evidence);
+      setCompletedSearch({ query, mode: searchMode });
+      setActiveTab("ask");
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "论文回答生成失败。");
+    } finally {
+      setIsAnswering(false);
     }
   };
 
@@ -104,8 +136,50 @@ export default function AssistantPanel({
           <p className="eyebrow">当前论文</p>
           <h2>{paper.name}</h2>
           <p className="assistant-intro">
-            先检索论文原文证据。语义检索适合中文问题，关键词检索适合术语、缩写和公式名称。
+            系统先在本地检索论文证据，再让 DeepSeek 只根据这些证据回答并标注页码。
           </p>
+
+          {answer && (
+            <section
+              className={
+                answer.insufficient_evidence
+                  ? "answer-card insufficient"
+                  : "answer-card"
+              }
+            >
+              <div className="answer-heading">
+                <strong>
+                  {answer.insufficient_evidence ? "证据不足" : "论文回答"}
+                </strong>
+                <span>{answer.model}</span>
+              </div>
+              <p className="answer-direct">{answer.answer}</p>
+              <div className="answer-section">
+                <h3>解释</h3>
+                <p>{answer.explanation}</p>
+              </div>
+              {answer.citations.length > 0 && (
+                <div className="answer-section">
+                  <h3>原文引用</h3>
+                  <div className="citation-list">
+                    {answer.citations.map((citation) => (
+                      <button
+                        type="button"
+                        key={citation.evidence_id}
+                        onClick={() => onNavigateToPage(citation.source_page)}
+                      >
+                        [E{citation.evidence_id}] 第 {citation.source_page} 页
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="answer-section uncertainty">
+                <h3>不确定性</h3>
+                <p>{answer.uncertainty || "当前回答未标记额外不确定性。"}</p>
+              </div>
+            </section>
+          )}
 
           {selection && (
             <section className="selection-card">
@@ -200,10 +274,10 @@ export default function AssistantPanel({
         className="question-box"
         onSubmit={(event) => {
           event.preventDefault();
-          void runSearch();
+          void runAnswer();
         }}
       >
-        <label htmlFor="question">在当前论文中查找证据</label>
+        <label htmlFor="question">向当前论文提问</label>
         <textarea
           id="question"
           value={question}
@@ -211,13 +285,23 @@ export default function AssistantPanel({
           placeholder="例如：为什么 Transformer 可以并行处理序列？"
           rows={4}
         />
-        <button type="submit" disabled={!question.trim() || isSearching}>
-          {isSearching
-            ? searchMode === "semantic"
-              ? "正在运行本地语义模型…"
-              : "正在检索…"
-            : "查找原文证据"}
-        </button>
+        <div className="question-actions">
+          <button
+            type="button"
+            className="secondary-action"
+            disabled={!question.trim() || isBusy}
+            onClick={() => void runSearch()}
+          >
+            {isSearching ? "正在检索…" : "只查原文证据"}
+          </button>
+          <button type="submit" disabled={!question.trim() || isBusy}>
+            {isAnswering
+              ? searchMode === "semantic"
+                ? "检索证据并生成回答…"
+                : "生成引用回答…"
+              : "生成带引用回答"}
+          </button>
+        </div>
       </form>
     </aside>
   );

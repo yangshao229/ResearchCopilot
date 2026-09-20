@@ -413,6 +413,96 @@ button:disabled {
   font-size: 12px;
 }
 
+.answer-card {
+  border: 1px solid rgba(83, 126, 105, 0.34);
+  border-radius: 18px;
+  padding: 18px;
+  background: rgba(240, 248, 243, 0.92);
+  box-shadow: 0 10px 30px rgba(29, 52, 42, 0.08);
+}
+
+.answer-card.insufficient {
+  border-color: rgba(179, 123, 61, 0.42);
+  background: rgba(255, 248, 236, 0.94);
+}
+
+.answer-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.answer-heading strong {
+  font-size: 0.9rem;
+  letter-spacing: 0.04em;
+}
+
+.answer-heading span {
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.answer-direct {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+  font-weight: 650;
+  line-height: 1.7;
+}
+
+.answer-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(27, 45, 37, 0.1);
+}
+
+.answer-section h3 {
+  margin: 0 0 7px;
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.answer-section p {
+  margin: 0;
+  line-height: 1.65;
+}
+
+.answer-section.uncertainty p {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.citation-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.citation-list button {
+  border: 1px solid rgba(64, 110, 88, 0.28);
+  border-radius: 999px;
+  padding: 7px 10px;
+  color: var(--accent-strong);
+  background: white;
+  cursor: pointer;
+}
+
+.question-actions {
+  display: grid;
+  grid-template-columns: 0.8fr 1.2fr;
+  gap: 9px;
+}
+
+.question-actions .secondary-action {
+  border: 1px solid rgba(40, 65, 54, 0.18);
+  color: var(--ink);
+  background: rgba(255, 255, 255, 0.7);
+}
+
 .empty-conversation {
   margin-top: 34px;
   border: 1px dashed #b9c2ba;

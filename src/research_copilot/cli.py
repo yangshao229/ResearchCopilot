@@ -1,6 +1,8 @@
 import argparse
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from research_copilot.paper_card import write_paper_card
 from research_copilot.paper_search import (
     search_page_data,
@@ -8,7 +10,7 @@ from research_copilot.paper_search import (
 )
 from research_copilot.pdf_importer import import_pdf_to_json
 from research_copilot.semantic_retriever import DEFAULT_EMBEDDING_MODEL
-from research_copilot.web_app import DEFAULT_PAPER_DIRECTORY
+from research_copilot.web_app import DEFAULT_PAPER_DIRECTORY, PROJECT_ROOT
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -153,6 +155,7 @@ def main() -> None:
 
         from research_copilot.web_app import create_app
 
+        load_dotenv(PROJECT_ROOT / ".env")
         uvicorn.run(
             create_app(args.paper_directory),
             host=args.host,
