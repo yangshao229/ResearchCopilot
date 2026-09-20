@@ -8,6 +8,7 @@ from research_copilot.paper_search import (
 )
 from research_copilot.pdf_importer import import_pdf_to_json
 from research_copilot.semantic_retriever import DEFAULT_EMBEDDING_MODEL
+from research_copilot.web_app import DEFAULT_PAPER_DIRECTORY
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -101,6 +102,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_EMBEDDING_MODEL,
     )
 
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Start the local paper-reading web app.",
+    )
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+    )
+    serve_parser.add_argument(
+        "--paper-directory",
+        type=Path,
+        default=DEFAULT_PAPER_DIRECTORY,
+    )
+
     return parser
 
 
@@ -125,6 +145,18 @@ def main() -> None:
         )
         print(
             f"Created review draft -> {args.output_path}"
+        )
+        return
+
+    if args.command == "serve":
+        import uvicorn
+
+        from research_copilot.web_app import create_app
+
+        uvicorn.run(
+            create_app(args.paper_directory),
+            host=args.host,
+            port=args.port,
         )
         return
 

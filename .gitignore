@@ -28,3 +28,6 @@ artifacts/
 Thumbs.db
 .idea/
 .vscode/
+web/node_modules/
+web/dist/
+*.tsbuildinfo
