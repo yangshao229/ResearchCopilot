@@ -18,11 +18,13 @@ from research_copilot.paper_answer_service import (
     PaperAnswerService,
 )
 from research_copilot.paper_search_service import PaperSearchService
+from research_copilot.reading_history import ReadingHistoryStore, ReadingRecord
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAPER_DIRECTORY = PROJECT_ROOT / "data" / "raw"
 DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
+DEFAULT_HISTORY_DIRECTORY = PROJECT_ROOT / "artifacts" / "reading_history"
 
 
 class PaperSummary(BaseModel):
@@ -58,6 +60,11 @@ class PaperSearchResult(BaseModel):
     fusion_score: float = 0.0
     reference_penalty: float = 0.0
     rerank_score: float = 0.0
+
+
+class ReadingRecordUpdate(BaseModel):
+    confirmed: bool
+    personal_note: str = Field(default="", max_length=5000)
 
 
 class PaperLibrary:
@@ -118,6 +125,7 @@ def create_app(
     frontend_directory: Path | None = None,
     search_service: PaperSearchService | None = None,
     answer_service: PaperAnswerService | None = None,
+    history_store: ReadingHistoryStore | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -125,6 +133,7 @@ def create_app(
         processed_directory or DEFAULT_PROCESSED_DIRECTORY
     )
     answerer = answer_service or PaperAnswerService(searcher)
+    history = history_store or ReadingHistoryStore(DEFAULT_HISTORY_DIRECTORY)
 
     app = FastAPI(
         title="ResearchCopilot",
@@ -136,7 +145,7 @@ def create_app(
             "http://127.0.0.1:5173",
             "http://localhost:5173",
         ],
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "PATCH"],
         allow_headers=["*"],
     )
 
@@ -204,13 +213,21 @@ def create_app(
             ) from error
 
         try:
-            return answerer.answer(
+            answer = answerer.answer(
                 paper_path,
                 paper_id,
                 request.query,
                 request.mode,
                 limit=request.limit,
             )
+            record = history.add_record(
+                paper_id,
+                paper_path.name,
+                request.query,
+                request.mode,
+                answer,
+            )
+            return answer.model_copy(update={"history_id": record.id})
         except ModelNotConfiguredError as error:
             raise HTTPException(
                 status_code=503,
@@ -224,6 +241,53 @@ def create_app(
                 status_code=502,
                 detail=str(error),
             ) from error
+
+    @app.get(
+        "/api/papers/{paper_id}/history",
+        response_model=list[ReadingRecord],
+    )
+    def list_reading_history(paper_id: str) -> list[ReadingRecord]:
+        try:
+            library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        return history.list_records(paper_id)
+
+    @app.patch(
+        "/api/papers/{paper_id}/history/{record_id}",
+        response_model=ReadingRecord,
+    )
+    def update_reading_history(
+        paper_id: str,
+        record_id: str,
+        request: ReadingRecordUpdate,
+    ) -> ReadingRecord:
+        try:
+            library.get_paper_path(paper_id)
+            return history.update_record(
+                paper_id,
+                record_id,
+                request.confirmed,
+                request.personal_note,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Record not found.") from error
+
+    @app.get("/api/papers/{paper_id}/history/{record_id}/export")
+    def export_reading_history(paper_id: str, record_id: str) -> FileResponse:
+        try:
+            library.get_paper_path(paper_id)
+            export_path = history.export_record(paper_id, record_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Record not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        return FileResponse(
+            export_path,
+            media_type="text/markdown; charset=utf-8",
+            filename=export_path.name,
+        )
 
     if frontend_path.is_dir():
         app.mount(

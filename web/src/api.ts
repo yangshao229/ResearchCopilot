@@ -40,6 +40,25 @@ export type PaperAnswer = {
   evidence: Evidence[];
   provider: string;
   model: string;
+  history_id: string | null;
+};
+
+export type ReadingRecord = {
+  id: string;
+  paper_id: string;
+  paper_name: string;
+  created_at: string;
+  question: string;
+  search_mode: SearchMode;
+  answer: string;
+  explanation: string;
+  citations: AnswerCitation[];
+  insufficient_evidence: boolean;
+  uncertainty: string;
+  provider: string;
+  model: string;
+  confirmed: boolean;
+  personal_note: string;
 };
 
 async function responseError(
@@ -117,4 +136,43 @@ export async function answerPaper(
   }
 
   return (await response.json()) as PaperAnswer;
+}
+
+export async function listReadingHistory(
+  paperId: string,
+): Promise<ReadingRecord[]> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/history`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "阅读记录加载失败");
+  }
+  return (await response.json()) as ReadingRecord[];
+}
+
+export async function updateReadingRecord(
+  paperId: string,
+  recordId: string,
+  confirmed: boolean,
+  personalNote: string,
+): Promise<ReadingRecord> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirmed, personal_note: personalNote }),
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(response, "阅读记录保存失败");
+  }
+  return (await response.json()) as ReadingRecord;
+}
+
+export function exportReadingRecordUrl(
+  paperId: string,
+  recordId: string,
+): string {
+  return `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}/export`;
 }

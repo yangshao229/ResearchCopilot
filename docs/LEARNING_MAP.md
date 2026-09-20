@@ -174,6 +174,8 @@ Git：`6c55279 feat: add grounded DeepSeek paper answers`
 
 ## M4：可解释的混合检索、重排序与评测
 
+Git：`cf95671 feat: add explainable hybrid retrieval`
+
 新增文件：
 
 - `src/research_copilot/hybrid_retriever.py`
@@ -191,6 +193,20 @@ Git：`6c55279 feat: add grounded DeepSeek paper answers`
 以后学习：候选召回、关键词与向量分数为什么不能直接相加、Reciprocal Rank Fusion、启发式重排序、参考文献降权、Recall@k、MRR、固定评测集、离线回归评测、如何在网页解释排序过程。
 
 验证结果：固定 5 题的 Mean Recall@5 均为 `1.00`；混合检索 MRR 为 `1.00`，高于关键词和语义检索的 `0.90`。M3 中失败的并行问题已把正文第 2 页排到第一。
+
+## M5：本地阅读记录与人工确认
+
+新增文件：
+
+- `src/research_copilot/reading_history.py`
+- `tests/test_reading_history.py`
+- `docs/M5_VALIDATION.md`
+
+重要修改：`paper_answer_service.py`、`web_app.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`App.tsx`、`styles.css`、`README.md`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`
+
+以后学习：本地 JSON 持久化、原子文件替换、UUID、UTC 时间、FastAPI 的 GET/PATCH/下载接口、React 的副作用与列表状态、草稿和人工确认状态、Markdown front matter、为什么 AI 不能代替用户点击“已确认”。
+
+验证结果：自动测试覆盖保存、重启后读取、更新、未确认拒绝导出和 Markdown 导出；真实 DeepSeek 回答保存为“待人工确认”，整页刷新后“记录 1”仍然存在。
 
 ## 后续阶段
 

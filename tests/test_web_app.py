@@ -9,6 +9,7 @@ from research_copilot.paper_answer_service import (
     PaperAnswerService,
 )
 from research_copilot.paper_search_service import PaperSearchService
+from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.semantic_retriever import EmbeddingModel
 from research_copilot.web_app import create_app
 
@@ -261,6 +262,7 @@ def test_paper_api_generates_answer_with_verified_page_citation(
             frontend_directory=tmp_path / "missing-frontend",
             search_service=search_service,
             answer_service=answer_service,
+            history_store=ReadingHistoryStore(tmp_path / "history"),
         )
     )
     paper_id = client.get("/api/papers").json()[0]["id"]
@@ -291,6 +293,27 @@ def test_paper_api_generates_answer_with_verified_page_citation(
     assert answer["citations"][0]["source_page"] == 2
     assert answer["provider"] == "fake"
     assert answer["evidence"][0]["source_page"] == 2
+    assert answer["history_id"]
+
+    history_response = client.get(f"/api/papers/{paper_id}/history")
+    assert history_response.status_code == 200
+    history = history_response.json()
+    assert history[0]["id"] == answer["history_id"]
+    assert history[0]["confirmed"] is False
+
+    update_response = client.patch(
+        f"/api/papers/{paper_id}/history/{answer['history_id']}",
+        json={"confirmed": True, "personal_note": "我确认了第 2 页原文。"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["confirmed"] is True
+
+    export_response = client.get(
+        f"/api/papers/{paper_id}/history/{answer['history_id']}/export"
+    )
+    assert export_response.status_code == 200
+    assert "review_status: confirmed" in export_response.text
+    assert "我确认了第 2 页原文" in export_response.text
 
 
 def test_paper_answer_api_explains_missing_deepseek_key(

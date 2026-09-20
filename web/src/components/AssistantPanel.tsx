@@ -1,17 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   answerPaper,
+  exportReadingRecordUrl,
+  listReadingHistory,
   searchPaper,
   type Paper,
   type PaperAnswer,
+  type ReadingRecord,
   type SearchMode,
   type SearchResult,
+  updateReadingRecord,
 } from "../api";
 import type { PdfSelection } from "./PdfReader";
 
 
-type AssistantTab = "ask" | "evidence";
+type AssistantTab = "ask" | "evidence" | "history";
 
 type CompletedSearch = {
   query: string;
@@ -49,6 +53,96 @@ function rankExplanation(result: SearchResult): string {
   return ranks.join(" · ");
 }
 
+type HistoryCardProps = {
+  paperId: string;
+  record: ReadingRecord;
+  onNavigateToPage: (pageNumber: number) => void;
+  onSaved: (record: ReadingRecord) => void;
+};
+
+function HistoryCard({
+  paperId,
+  record,
+  onNavigateToPage,
+  onSaved,
+}: HistoryCardProps) {
+  const [note, setNote] = useState(record.personal_note);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const save = async (confirmed: boolean) => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      onSaved(
+        await updateReadingRecord(paperId, record.id, confirmed, note),
+      );
+    } catch (reason: unknown) {
+      setSaveError(reason instanceof Error ? reason.message : "保存失败。");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <article className={record.confirmed ? "history-card confirmed" : "history-card"}>
+      <div className="history-heading">
+        <span>{record.confirmed ? "已人工确认" : "待人工确认"}</span>
+        <time dateTime={record.created_at}>
+          {new Date(record.created_at).toLocaleString("zh-CN")}
+        </time>
+      </div>
+      <h3>{record.question}</h3>
+      <p className="history-answer">{record.answer}</p>
+      {record.citations.length > 0 && (
+        <div className="citation-list">
+          {record.citations.map((citation) => (
+            <button
+              type="button"
+              key={citation.evidence_id}
+              onClick={() => onNavigateToPage(citation.source_page)}
+            >
+              第 {citation.source_page} 页
+            </button>
+          ))}
+        </div>
+      )}
+      <label htmlFor={`note-${record.id}`}>我的理解</label>
+      <textarea
+        id={`note-${record.id}`}
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        placeholder="写下你核对原文后的理解、疑问或反例……"
+        rows={3}
+      />
+      {saveError && <p className="search-error">{saveError}</p>}
+      <div className="history-actions">
+        <button
+          type="button"
+          disabled={isSaving}
+          onClick={() => void save(false)}
+        >
+          {isSaving ? "保存中…" : "保存备注"}
+        </button>
+        {record.confirmed ? (
+          <a href={exportReadingRecordUrl(paperId, record.id)} download>
+            导出 Markdown
+          </a>
+        ) : (
+          <button
+            type="button"
+            className="confirm-record"
+            disabled={isSaving}
+            onClick={() => void save(true)}
+          >
+            核对完成并确认
+          </button>
+        )}
+      </div>
+    </article>
+  );
+}
+
 export default function AssistantPanel({
   paper,
   selection,
@@ -65,6 +159,18 @@ export default function AssistantPanel({
   const [isSearching, setIsSearching] = useState(false);
   const [isAnswering, setIsAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<ReadingRecord[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+
+  useEffect(() => {
+    listReadingHistory(paper.id)
+      .then(setHistory)
+      .catch((reason: unknown) => {
+        setHistoryError(
+          reason instanceof Error ? reason.message : "阅读记录加载失败。",
+        );
+      });
+  }, [paper.id]);
 
   const isBusy = isSearching || isAnswering;
 
@@ -112,6 +218,7 @@ export default function AssistantPanel({
       setResults(paperAnswer.evidence);
       setCompletedSearch({ query, mode: searchMode });
       setActiveTab("ask");
+      setHistory(await listReadingHistory(paper.id));
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "论文回答生成失败。");
     } finally {
@@ -140,8 +247,14 @@ export default function AssistantPanel({
         >
           证据{results.length > 0 ? ` ${results.length}` : ""}
         </button>
-        <button type="button" role="tab" aria-selected="false" disabled>
-          笔记
+        <button
+          type="button"
+          className={activeTab === "history" ? "active" : ""}
+          role="tab"
+          aria-selected={activeTab === "history"}
+          onClick={() => setActiveTab("history")}
+        >
+          记录{history.length > 0 ? ` ${history.length}` : ""}
         </button>
         <button type="button" role="tab" aria-selected="false" disabled>
           总结
@@ -246,7 +359,7 @@ export default function AssistantPanel({
 
           {error && <p className="search-error">{error}</p>}
         </div>
-      ) : (
+      ) : activeTab === "evidence" ? (
         <div className="assistant-content evidence-content">
           <p className="eyebrow">当前论文证据</p>
           {completedSearch ? (
@@ -297,6 +410,39 @@ export default function AssistantPanel({
             <div className="empty-conversation">
               <span>还没有检索记录</span>
               <p>返回“提问”输入问题，系统会在当前论文内查找证据。</p>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="assistant-content history-content">
+          <p className="eyebrow">本地阅读记录</p>
+          <h2>人工确认后再进入正式笔记</h2>
+          <p className="assistant-intro">
+            AI 回答会自动保存在本机。核对引用、写下自己的理解并确认后，才能导出 Markdown。
+          </p>
+          {historyError && <p className="search-error">{historyError}</p>}
+          {history.length > 0 ? (
+            <div className="history-list">
+              {history.map((record) => (
+                <HistoryCard
+                  key={record.id}
+                  paperId={paper.id}
+                  record={record}
+                  onNavigateToPage={onNavigateToPage}
+                  onSaved={(updatedRecord) => {
+                    setHistory((currentHistory) =>
+                      currentHistory.map((item) =>
+                        item.id === updatedRecord.id ? updatedRecord : item,
+                      ),
+                    );
+                  }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="empty-conversation">
+              <span>还没有问答记录</span>
+              <p>生成第一条带引用回答后，它会自动保存在这里。</p>
             </div>
           )}
         </div>

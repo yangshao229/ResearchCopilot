@@ -65,6 +65,7 @@ class PaperAnswer(BaseModel):
     evidence: list[Evidence]
     provider: str
     model: str
+    history_id: str | None = None
 
 
 class AnswerModel(Protocol):
