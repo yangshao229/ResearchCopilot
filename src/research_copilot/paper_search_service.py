@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Literal
 
 from research_copilot.paper_search import (
+    hybrid_search_page_data,
     search_page_data,
     semantic_search_page_data,
 )
@@ -11,7 +12,7 @@ from research_copilot.semantic_retriever import (
     EmbeddingModel,
 )
 
-SearchMode = Literal["keyword", "semantic"]
+SearchMode = Literal["keyword", "semantic", "hybrid"]
 SearchResult = dict[str, int | float | str]
 
 
@@ -40,23 +41,46 @@ class PaperSearchService:
                 query,
                 limit=limit,
             )
-        else:
+        elif mode == "semantic":
             raw_results = semantic_search_page_data(
                 page_data_path,
                 query,
                 limit=limit,
                 embedding_model=self._get_embedding_model(),
             )
+        else:
+            raw_results = hybrid_search_page_data(
+                page_data_path,
+                query,
+                limit=limit,
+                embedding_model=self._get_embedding_model(),
+            )
 
-        return [
-            {
+        normalized_results: list[SearchResult] = []
+        for result in raw_results:
+            normalized_result: SearchResult = {
                 "source_page": int(result["source_page"]),
                 "chunk_index": int(result["chunk_index"]),
                 "text": str(result["text"]),
                 "score": float(result["score"]),
             }
-            for result in raw_results
-        ]
+            for field in (
+                "keyword_rank",
+                "keyword_score",
+                "semantic_rank",
+                "semantic_score",
+                "fusion_score",
+                "reference_penalty",
+                "rerank_score",
+            ):
+                if field in result:
+                    value = result[field]
+                    normalized_result[field] = (
+                        int(value) if field.endswith("_rank") else float(value)
+                    )
+            normalized_results.append(normalized_result)
+
+        return normalized_results
 
     def page_data_path(self, paper_id: str) -> Path:
         return self.processed_directory / f"{paper_id}.json"

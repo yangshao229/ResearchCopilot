@@ -29,7 +29,24 @@ function scoreLabel(result: SearchResult, mode: SearchMode): string {
   if (mode === "keyword") {
     return `命中 ${result.score} 次`;
   }
+  if (mode === "hybrid") {
+    return `重排分 ${result.rerank_score.toFixed(4)}`;
+  }
   return `相似度 ${result.score.toFixed(4)}`;
+}
+
+function rankExplanation(result: SearchResult): string {
+  const ranks = [];
+  if (result.keyword_rank > 0) {
+    ranks.push(`关键词 #${result.keyword_rank}`);
+  }
+  if (result.semantic_rank > 0) {
+    ranks.push(`语义 #${result.semantic_rank}`);
+  }
+  if (result.reference_penalty > 0) {
+    ranks.push("已降低参考文献权重");
+  }
+  return ranks.join(" · ");
 }
 
 export default function AssistantPanel({
@@ -40,7 +57,7 @@ export default function AssistantPanel({
 }: AssistantPanelProps) {
   const [activeTab, setActiveTab] = useState<AssistantTab>("ask");
   const [question, setQuestion] = useState("");
-  const [searchMode, setSearchMode] = useState<SearchMode>("semantic");
+  const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [completedSearch, setCompletedSearch] =
     useState<CompletedSearch | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -203,6 +220,14 @@ export default function AssistantPanel({
           <div className="mode-picker" aria-label="检索方式">
             <button
               type="button"
+              className={searchMode === "hybrid" ? "selected" : ""}
+              onClick={() => setSearchMode("hybrid")}
+            >
+              混合检索
+              <small>综合术语与语义，默认推荐</small>
+            </button>
+            <button
+              type="button"
               className={searchMode === "semantic" ? "selected" : ""}
               onClick={() => setSearchMode("semantic")}
             >
@@ -228,9 +253,11 @@ export default function AssistantPanel({
             <>
               <h2>{completedSearch.query}</h2>
               <p className="assistant-intro">
-                {completedSearch.mode === "semantic"
-                  ? "语义检索按意思寻找相关段落，分数用于比较本次结果的相对顺序。"
-                  : "关键词检索按问题中的词语统计命中次数。"}
+                {completedSearch.mode === "hybrid"
+                  ? "混合检索分别排列关键词与语义结果，再融合名次并降低参考文献列表的权重。"
+                  : completedSearch.mode === "semantic"
+                    ? "语义检索按意思寻找相关段落，分数用于比较本次结果的相对顺序。"
+                    : "关键词检索按问题中的词语统计命中次数。"}
               </p>
 
               {results.length > 0 ? (
@@ -249,6 +276,11 @@ export default function AssistantPanel({
                           </span>
                         </span>
                         <span className="evidence-text">{result.text}</span>
+                        {completedSearch.mode === "hybrid" && (
+                          <span className="rank-explanation">
+                            {rankExplanation(result)}
+                          </span>
+                        )}
                         <span className="jump-label">在 PDF 中查看 →</span>
                       </button>
                     </li>

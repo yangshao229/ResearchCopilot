@@ -1,0 +1,27 @@
+[
+  {
+    "id": "multi_head_attention",
+    "question": "Multi-head attention 是什么，它为什么有用？",
+    "relevant_pages": [4, 5]
+  },
+  {
+    "id": "scaled_dot_product",
+    "question": "Scaled dot-product attention 为什么除以 sqrt(dk)？",
+    "relevant_pages": [4]
+  },
+  {
+    "id": "positional_encoding",
+    "question": "Positional encoding 怎样加入序列位置信息？",
+    "relevant_pages": [6]
+  },
+  {
+    "id": "regularization",
+    "question": "Dropout 和 label smoothing 如何使用？",
+    "relevant_pages": [8, 9]
+  },
+  {
+    "id": "parallel_vs_rnn",
+    "question": "为什么 Transformer 能并行而 RNN 不行？",
+    "relevant_pages": [2]
+  }
+]

@@ -157,6 +157,8 @@ Git：`4b19bb6 feat: connect paper reader to local evidence search`
 
 ## M3：基于证据的 DeepSeek 引用回答
 
+Git：`6c55279 feat: add grounded DeepSeek paper answers`
+
 新增文件：
 
 - `.env.example`
@@ -169,6 +171,26 @@ Git：`4b19bb6 feat: connect paper reader to local evidence search`
 以后学习：RAG 的完整数据流、模型提供方抽象、环境变量与密钥管理、Responses API、JSON Schema 结构化输出、Pydantic 校验、服务器端引用白名单、失败关闭原则、前端异步状态、API 错误处理、点击引用跳页、真实问题评测、TLS 与网络客户端差异。
 
 验证结果：29 个自动测试通过；5 个真实问题完成评测；网页真实回答与第 5 页引用跳转通过。当前语义排序仍会混入参考文献，下一阶段进入混合检索和重排序。
+
+## M4：可解释的混合检索、重排序与评测
+
+新增文件：
+
+- `src/research_copilot/hybrid_retriever.py`
+- `src/research_copilot/retrieval_evaluation.py`
+- `src/research_copilot/retrieval_benchmark.py`
+- `evaluation/retrieval_questions.json`
+- `scripts/evaluate_retrieval.py`
+- `tests/test_hybrid_retriever.py`
+- `tests/test_retrieval_evaluation.py`
+- `tests/test_retrieval_benchmark.py`
+- `docs/M4_EVALUATION.md`
+
+重要修改：`paper_search.py`、`paper_search_service.py`、`paper_answer_service.py`、`web_app.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`App.tsx`、`styles.css`、`README.md`、`PROJECT.md`
+
+以后学习：候选召回、关键词与向量分数为什么不能直接相加、Reciprocal Rank Fusion、启发式重排序、参考文献降权、Recall@k、MRR、固定评测集、离线回归评测、如何在网页解释排序过程。
+
+验证结果：固定 5 题的 Mean Recall@5 均为 `1.00`；混合检索 MRR 为 `1.00`，高于关键词和语义检索的 `0.90`。M3 中失败的并行问题已把正文第 2 页排到第一。
 
 ## 后续阶段
 

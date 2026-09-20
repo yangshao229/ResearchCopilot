@@ -34,7 +34,7 @@ class PaperSummary(BaseModel):
 
 class PaperSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
-    mode: Literal["keyword", "semantic"] = "semantic"
+    mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
 
     @field_validator("query")
@@ -51,6 +51,13 @@ class PaperSearchResult(BaseModel):
     chunk_index: int
     text: str
     score: float
+    keyword_rank: int = 0
+    keyword_score: float = 0.0
+    semantic_rank: int = 0
+    semantic_score: float = 0.0
+    fusion_score: float = 0.0
+    reference_penalty: float = 0.0
+    rerank_score: float = 0.0
 
 
 class PaperLibrary:

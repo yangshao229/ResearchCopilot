@@ -31,6 +31,13 @@ class Evidence(BaseModel):
     chunk_index: int = Field(ge=0)
     text: str
     score: float
+    keyword_rank: int = 0
+    keyword_score: float = 0.0
+    semantic_rank: int = 0
+    semantic_score: float = 0.0
+    fusion_score: float = 0.0
+    reference_penalty: float = 0.0
+    rerank_score: float = 0.0
 
 
 class ModelAnswerDraft(BaseModel):
@@ -256,6 +263,13 @@ class PaperAnswerService:
                 chunk_index=int(item["chunk_index"]),
                 text=str(item["text"]),
                 score=float(item["score"]),
+                keyword_rank=int(item.get("keyword_rank", 0)),
+                keyword_score=float(item.get("keyword_score", 0.0)),
+                semantic_rank=int(item.get("semantic_rank", 0)),
+                semantic_score=float(item.get("semantic_score", 0.0)),
+                fusion_score=float(item.get("fusion_score", 0.0)),
+                reference_penalty=float(item.get("reference_penalty", 0.0)),
+                rerank_score=float(item.get("rerank_score", 0.0)),
             )
             for index, item in enumerate(raw_evidence, start=1)
         ]

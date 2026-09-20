@@ -85,7 +85,7 @@ export default function App() {
           <p className="eyebrow">Local paper workspace</p>
           <h1>ResearchCopilot</h1>
         </div>
-        <div className="milestone-badge">M3 · 基于证据回答</div>
+        <div className="milestone-badge">M4 · 混合检索与重排序</div>
       </header>
 
       <div className="workspace">

@@ -164,6 +164,53 @@ def test_paper_api_searches_current_paper_semantically(tmp_path: Path) -> None:
     assert results[0]["score"] == 0.9
 
 
+def test_paper_api_exposes_hybrid_ranking_explanation(tmp_path: Path) -> None:
+    paper_directory = tmp_path / "papers"
+    processed_directory = tmp_path / "processed"
+    paper_directory.mkdir()
+    paper_path = paper_directory / "attention.pdf"
+    create_test_pdf(paper_path)
+    search_service = PaperSearchService(
+        processed_directory,
+        embedding_model=SearchApiFakeEmbeddingModel(),
+    )
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+            search_service=search_service,
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    processed_directory.mkdir()
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {"source_page": 3, "text": "First passage."},
+                {
+                    "source_page": 7,
+                    "text": "The Transformer enables parallel computation.",
+                },
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+
+    response = client.post(
+        f"/api/papers/{paper_id}/search",
+        json={"query": "Transformer parallel", "mode": "hybrid", "limit": 2},
+    )
+
+    assert response.status_code == 200
+    results = response.json()
+    assert results[0]["source_page"] == 7
+    assert results[0]["keyword_rank"] == 1
+    assert results[0]["semantic_rank"] == 1
+    assert results[0]["fusion_score"] > 0
+    assert results[0]["rerank_score"] == results[0]["score"]
+
+
 def test_paper_api_rejects_blank_search_query(tmp_path: Path) -> None:
     client = TestClient(
         create_app(

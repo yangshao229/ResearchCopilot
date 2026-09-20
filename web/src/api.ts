@@ -5,13 +5,20 @@ export type Paper = {
   page_count: number | null;
 };
 
-export type SearchMode = "keyword" | "semantic";
+export type SearchMode = "keyword" | "semantic" | "hybrid";
 
 export type SearchResult = {
   source_page: number;
   chunk_index: number;
   text: string;
   score: number;
+  keyword_rank: number;
+  keyword_score: number;
+  semantic_rank: number;
+  semantic_score: number;
+  fusion_score: number;
+  reference_penalty: number;
+  rerank_score: number;
 };
 
 export type Evidence = SearchResult & {
