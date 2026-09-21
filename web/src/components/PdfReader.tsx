@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Document, Page } from "react-pdf";
 
@@ -25,11 +25,79 @@ export default function PdfReader({
 }: PdfReaderProps) {
   const [pageCount, setPageCount] = useState(paper.page_count ?? 0);
   const [scale, setScale] = useState(1.1);
+  const [fitWidth, setFitWidth] = useState(true);
+  const [continuous, setContinuous] = useState(true);
+  const [stageWidth, setStageWidth] = useState(0);
+  const stageRef = useRef<HTMLDivElement | null>(null);
+  const pageElements = useRef(new Map<number, HTMLDivElement>());
+  const pageChangeCameFromScroll = useRef(false);
 
   useEffect(() => {
     setPageCount(paper.page_count ?? 0);
     setScale(1.1);
+    setFitWidth(true);
+    setContinuous(true);
+    pageElements.current.clear();
   }, [paper.id, paper.page_count]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage) {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(([entry]) => {
+      setStageWidth(entry.contentRect.width);
+    });
+    resizeObserver.observe(stage);
+    return () => resizeObserver.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!continuous || pageChangeCameFromScroll.current) {
+      pageChangeCameFromScroll.current = false;
+      return;
+    }
+    pageElements.current.get(pageNumber)?.scrollIntoView({ block: "start" });
+  }, [continuous, pageNumber]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || !continuous) {
+      return;
+    }
+
+    let animationFrame = 0;
+    const updateVisiblePage = () => {
+      animationFrame = 0;
+      const stageTop = stage.getBoundingClientRect().top;
+      let closestPage = pageNumber;
+      let closestDistance = Number.POSITIVE_INFINITY;
+      for (const [candidatePage, element] of pageElements.current) {
+        const distance = Math.abs(element.getBoundingClientRect().top - stageTop - 18);
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          closestPage = candidatePage;
+        }
+      }
+      if (closestPage !== pageNumber) {
+        pageChangeCameFromScroll.current = true;
+        onPageChange(closestPage);
+      }
+    };
+    const handleScroll = () => {
+      if (!animationFrame) {
+        animationFrame = window.requestAnimationFrame(updateVisiblePage);
+      }
+    };
+    stage.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      stage.removeEventListener("scroll", handleScroll);
+      if (animationFrame) {
+        window.cancelAnimationFrame(animationFrame);
+      }
+    };
+  }, [continuous, onPageChange, pageNumber]);
 
   const goToPage = (nextPage: number) => {
     const upperBound = pageCount || paper.page_count || 1;
@@ -49,12 +117,26 @@ export default function PdfReader({
 
     const text = selection.toString().replace(/\s+/g, " ").trim();
     if (text) {
+      const selectionNode =
+        range.commonAncestorContainer instanceof Element
+          ? range.commonAncestorContainer
+          : range.commonAncestorContainer.parentElement;
+      const pageElement = selectionNode?.closest<HTMLElement>(
+        "[data-source-page]",
+      );
       onTextSelection({
         text,
-        sourcePage: pageNumber,
+        sourcePage: Number(pageElement?.dataset.sourcePage ?? pageNumber),
       });
     }
   };
+
+  const renderedPages = continuous
+    ? Array.from({ length: pageCount }, (_, index) => index + 1)
+    : [pageNumber];
+  const fittedPageWidth = fitWidth && stageWidth > 0
+    ? Math.max(240, stageWidth - 52)
+    : undefined;
 
   return (
     <section className="reader" aria-label="PDF 阅读区">
@@ -94,23 +176,47 @@ export default function PdfReader({
         <div className="zoom-controls">
           <button
             type="button"
+            className={continuous ? "active" : ""}
+            onClick={() => setContinuous((value) => !value)}
+          >
+            {continuous ? "连续" : "单页"}
+          </button>
+          <button
+            type="button"
+            className={fitWidth ? "active" : ""}
+            onClick={() => setFitWidth((value) => !value)}
+          >
+            适合宽度
+          </button>
+          <button
+            type="button"
             aria-label="缩小"
-            onClick={() => setScale((value) => Math.max(0.6, value - 0.15))}
+            onClick={() => {
+              setFitWidth(false);
+              setScale((value) => Math.max(0.6, value - 0.15));
+            }}
           >
             −
           </button>
-          <span>{Math.round(scale * 100)}%</span>
+          <span>{fitWidth ? "自适应" : `${Math.round(scale * 100)}%`}</span>
           <button
             type="button"
             aria-label="放大"
-            onClick={() => setScale((value) => Math.min(2.2, value + 0.15))}
+            onClick={() => {
+              setFitWidth(false);
+              setScale((value) => Math.min(2.2, value + 0.15));
+            }}
           >
             +
           </button>
         </div>
       </header>
 
-      <div className="document-stage" onMouseUp={captureTextSelection}>
+      <div
+        ref={stageRef}
+        className="document-stage"
+        onMouseUp={captureTextSelection}
+      >
         <Document
           file={paperFileUrl(paper.id)}
           loading={<div className="reader-message">正在加载 PDF…</div>}
@@ -122,12 +228,31 @@ export default function PdfReader({
             }
           }}
         >
-          <Page
-            pageNumber={pageNumber}
-            scale={scale}
-            renderTextLayer
-            renderAnnotationLayer
-          />
+          <div className={continuous ? "pdf-pages continuous" : "pdf-pages"}>
+            {renderedPages.map((renderedPage) => (
+              <div
+                className="pdf-page-wrapper"
+                data-source-page={renderedPage}
+                key={renderedPage}
+                ref={(element) => {
+                  if (element) {
+                    pageElements.current.set(renderedPage, element);
+                  } else {
+                    pageElements.current.delete(renderedPage);
+                  }
+                }}
+              >
+                <Page
+                  pageNumber={renderedPage}
+                  width={fittedPageWidth}
+                  scale={fitWidth ? undefined : scale}
+                  renderTextLayer
+                  renderAnnotationLayer
+                />
+                <span className="rendered-page-number">第 {renderedPage} 页</span>
+              </div>
+            ))}
+          </div>
         </Document>
       </div>
     </section>

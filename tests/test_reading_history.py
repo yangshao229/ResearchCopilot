@@ -69,3 +69,34 @@ def test_confirmed_record_exports_reviewable_markdown(tmp_path: Path) -> None:
     assert "PDF 第 2 页" in markdown
     assert "My understanding" in markdown
     assert store.list_records("paper-id")[0].category == "method"
+
+
+def test_record_requires_user_note_and_category_before_confirmation(
+    tmp_path: Path,
+) -> None:
+    store = ReadingHistoryStore(tmp_path)
+    created = store.add_record(
+        "paper-id",
+        "paper.pdf",
+        "What did I learn?",
+        "hybrid",
+        sample_answer(),
+    )
+
+    with pytest.raises(ValueError, match="个人理解"):
+        store.update_record(
+            "paper-id",
+            created.id,
+            confirmed=True,
+            personal_note="",
+            category="method",
+        )
+
+    with pytest.raises(ValueError, match="选择记录所属栏目"):
+        store.update_record(
+            "paper-id",
+            created.id,
+            confirmed=True,
+            personal_note="My own understanding.",
+            category="unclassified",
+        )

@@ -15,7 +15,7 @@
 html,
 body,
 #root {
-  min-width: 1080px;
+  min-width: 320px;
   min-height: 100%;
   margin: 0;
 }
@@ -84,6 +84,22 @@ button:disabled {
   letter-spacing: -0.02em;
 }
 
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.topbar-actions > button {
+  border: 1px solid #c2cac3;
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #45534b;
+  background: #fff;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .eyebrow {
   margin: 0 0 4px;
   color: #667169;
@@ -111,6 +127,22 @@ button:disabled {
   overflow: hidden;
 }
 
+.workspace.library-collapsed {
+  grid-template-columns: minmax(520px, 1fr) 340px;
+}
+
+.workspace.assistant-collapsed {
+  grid-template-columns: 238px minmax(520px, 1fr);
+}
+
+.workspace.library-collapsed.assistant-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.workspace.library-collapsed .library-panel {
+  display: none;
+}
+
 .library-panel,
 .assistant-panel {
   background: #f8f9f5;
@@ -119,6 +151,9 @@ button:disabled {
 
 .library-panel {
   border-right: 1px solid #cbd1ca;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .panel-heading {
@@ -140,8 +175,37 @@ button:disabled {
 }
 
 .paper-list {
+  min-height: 0;
   padding: 10px;
   overflow-y: auto;
+}
+
+.import-paper-button {
+  margin: 12px 10px 0;
+  border: 1px solid #78917f;
+  border-radius: 9px;
+  padding: 9px 10px;
+  color: #31543e;
+  background: #e7f0e9;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: center;
+  cursor: pointer;
+}
+
+.import-paper-button input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.import-message {
+  margin: 8px 12px 0;
+  color: #486050;
+  font-size: 10px;
+  line-height: 1.45;
 }
 
 .paper-list > button {
@@ -228,6 +292,7 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .page-controls,
@@ -250,6 +315,12 @@ button:disabled {
   background: #f4f8f4;
 }
 
+.reader-toolbar button.active {
+  border-color: #64816d;
+  color: #2d4e39;
+  background: #e5efe7;
+}
+
 .page-controls label {
   color: #59655e;
   font-size: 12px;
@@ -265,7 +336,7 @@ button:disabled {
 }
 
 .zoom-controls span {
-  width: 48px;
+  min-width: 48px;
   color: #59655e;
   font-size: 12px;
   text-align: center;
@@ -281,9 +352,39 @@ button:disabled {
   min-height: 0;
   padding: 26px;
   overflow: auto;
+  display: block;
+  scroll-behavior: smooth;
+}
+
+.document-stage .react-pdf__Document {
   display: flex;
   justify-content: center;
-  align-items: flex-start;
+}
+
+.pdf-pages {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pdf-pages.continuous {
+  gap: 26px;
+}
+
+.pdf-page-wrapper {
+  position: relative;
+  scroll-margin-top: 12px;
+}
+
+.rendered-page-number {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  border-radius: 999px;
+  padding: 3px 7px;
+  color: #667169;
+  background: rgb(248 249 245 / 88%);
+  font-size: 9px;
 }
 
 .document-stage .react-pdf__Page {
@@ -370,7 +471,7 @@ button:disabled {
 }
 
 .selection-card-heading button,
-.use-selection-button {
+.selection-card > button {
   border: 0;
   color: #466351;
   background: transparent;
@@ -388,8 +489,9 @@ button:disabled {
   line-height: 1.55;
 }
 
-.use-selection-button {
-  width: 100%;
+.selection-card > button {
+  width: calc(50% - 4px);
+  margin: 0 4px 8px 0;
   border: 1px solid #b4c5b8;
   border-radius: 7px;
   padding: 7px;
@@ -845,6 +947,47 @@ button:disabled {
   font-weight: 750;
 }
 
+.send-scope {
+  margin: 0 0 8px;
+  color: #77817b;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.info-content dl {
+  display: grid;
+  gap: 10px;
+  margin: 18px 0 0;
+}
+
+.info-content dl > div {
+  border: 1px solid #d8ddd7;
+  border-radius: 9px;
+  padding: 10px;
+  background: #fff;
+}
+
+.info-content dt {
+  margin-bottom: 4px;
+  color: #77817b;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.info-content dd {
+  margin: 0;
+  color: #27332c;
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.workspace.library-collapsed.assistant-collapsed .welcome-state {
+  grid-column: 1;
+}
+
 .question-box textarea {
   width: 100%;
   resize: none;
@@ -897,8 +1040,90 @@ button:disabled {
   color: #a53e35;
 }
 
-@media (max-width: 1200px) {
+@media (max-width: 1200px) and (min-width: 1051px) {
   .workspace {
-    grid-template-columns: 205px minmax(500px, 1fr) 300px;
+    grid-template-columns: 205px minmax(0, 1fr) 300px;
+  }
+
+  .workspace.library-collapsed {
+    grid-template-columns: minmax(0, 1fr) 300px;
+  }
+
+  .workspace.assistant-collapsed {
+    grid-template-columns: 205px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 1050px) {
+  .workspace,
+  .workspace.library-collapsed {
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .workspace.assistant-collapsed,
+  .workspace.library-collapsed.assistant-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .library-panel {
+    position: absolute;
+    z-index: 5;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 238px;
+    box-shadow: 10px 0 28px rgb(42 54 47 / 16%);
+  }
+
+  .selection-hint {
+    display: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .topbar {
+    padding: 12px;
+  }
+
+  .topbar .eyebrow,
+  .milestone-badge {
+    display: none;
+  }
+
+  .topbar h1 {
+    font-size: 20px;
+  }
+
+  .topbar-actions > button {
+    padding: 7px;
+    font-size: 10px;
+  }
+
+  .workspace,
+  .workspace.library-collapsed {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assistant-panel {
+    position: absolute;
+    z-index: 4;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(360px, 100%);
+    box-shadow: -10px 0 28px rgb(42 54 47 / 16%);
+  }
+
+  .workspace.assistant-collapsed .assistant-panel {
+    display: none;
+  }
+
+  .reader-toolbar {
+    align-items: flex-start;
+  }
+
+  .document-stage {
+    padding: 14px;
   }
 }

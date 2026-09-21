@@ -224,6 +224,19 @@ Git：`ee33940 feat: persist reviewable reading records`
 
 验证结果：至少两条确认记录才能生成；卡片保留页码、摘录和记录 ID；已有正式文件时显示差异并导出带时间戳的新版本。真实页面显示分类器和总结入口，没有替用户确认现有草稿。
 
+## M6.1：第一版阅读体验补全
+
+新增文件：
+
+- `Start ResearchCopilot.command`
+- `docs/M6_1_VALIDATION.md`
+
+重要修改：`cli.py`、`web_app.py`、`reading_history.py`、`test_web_app.py`、`test_reading_history.py`、`api.ts`、`App.tsx`、`PdfReader.tsx`、`AssistantPanel.tsx`、`styles.css`、`README.md`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`
+
+以后学习：浏览器上传二进制文件、安全文件名、SHA-256 去重、原子写入、响应式三栏布局、`ResizeObserver`、连续 PDF 渲染、滚动位置与页码同步、文本选区定位、前后端双重业务校验、默认浏览器启动、macOS 双击脚本。
+
+验证结果：网页可直接导入 PDF 并识别重复文件；连续阅读、适合宽度、分栏收起和窄屏布局可用；选区有四种快捷动作；只有填写个人理解并选择栏目后才能加入论文卡片；自动测试、前端构建和真实页面检查均通过。详细过程见 [M6.1 验收](M6_1_VALIDATION.md)。
+
 ## 后续阶段
 
 每完成一个后续里程碑，继续在这里记录新增文件、重要修改、验证结果与以后需要讲解的知识点。

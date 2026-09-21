@@ -1,4 +1,6 @@
 import argparse
+import threading
+import webbrowser
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -122,6 +124,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=DEFAULT_PAPER_DIRECTORY,
     )
+    serve_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Do not open the reading workspace in the default browser.",
+    )
 
     return parser
 
@@ -156,6 +163,9 @@ def main() -> None:
         from research_copilot.web_app import create_app
 
         load_dotenv(PROJECT_ROOT / ".env")
+        if not args.no_open:
+            workspace_url = f"http://{args.host}:{args.port}/"
+            threading.Timer(0.8, webbrowser.open, args=(workspace_url,)).start()
         uvicorn.run(
             create_app(args.paper_directory),
             host=args.host,

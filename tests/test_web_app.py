@@ -46,6 +46,82 @@ def test_paper_api_lists_local_pdfs(tmp_path: Path) -> None:
     assert papers[0]["page_count"] == 2
 
 
+def test_paper_api_imports_pdf_from_browser(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.pdf"
+    paper_directory = tmp_path / "papers"
+    create_test_pdf(source_path, page_count=3)
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+
+    response = client.post(
+        "/api/papers/import",
+        content=source_path.read_bytes(),
+        headers={
+            "Content-Type": "application/pdf",
+            "X-PDF-Filename": "new-paper.pdf",
+        },
+    )
+
+    assert response.status_code == 200
+    result = response.json()
+    assert result["imported"] is True
+    assert result["paper"]["name"] == "new-paper.pdf"
+    assert result["paper"]["page_count"] == 3
+    assert (paper_directory / "new-paper.pdf").exists()
+
+
+def test_paper_api_detects_duplicate_pdf_content(tmp_path: Path) -> None:
+    source_path = tmp_path / "source.pdf"
+    paper_directory = tmp_path / "papers"
+    create_test_pdf(source_path)
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+    pdf_content = source_path.read_bytes()
+
+    first_response = client.post(
+        "/api/papers/import",
+        content=pdf_content,
+        headers={"X-PDF-Filename": "first.pdf"},
+    )
+    duplicate_response = client.post(
+        "/api/papers/import",
+        content=pdf_content,
+        headers={"X-PDF-Filename": "duplicate.pdf"},
+    )
+
+    assert first_response.json()["imported"] is True
+    assert duplicate_response.status_code == 200
+    assert duplicate_response.json()["imported"] is False
+    assert duplicate_response.json()["paper"]["name"] == "first.pdf"
+    assert len(list(paper_directory.glob("*.pdf"))) == 1
+
+
+def test_paper_api_rejects_invalid_pdf_upload(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path / "papers",
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+
+    response = client.post(
+        "/api/papers/import",
+        content=b"not a pdf",
+        headers={"X-PDF-Filename": "broken.pdf"},
+    )
+
+    assert response.status_code == 400
+    assert "有效的 PDF" in response.json()["detail"]
+
+
 def test_paper_api_serves_pdf_file(tmp_path: Path) -> None:
     paper_path = tmp_path / "attention.pdf"
     create_test_pdf(paper_path)
@@ -306,7 +382,11 @@ def test_paper_api_generates_answer_with_verified_page_citation(
 
     update_response = client.patch(
         f"/api/papers/{paper_id}/history/{answer['history_id']}",
-        json={"confirmed": True, "personal_note": "我确认了第 2 页原文。"},
+        json={
+            "confirmed": True,
+            "personal_note": "我确认了第 2 页原文。",
+            "category": "method",
+        },
     )
     assert update_response.status_code == 200
     assert update_response.json()["confirmed"] is True

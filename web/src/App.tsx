@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { listPapers, type Paper } from "./api";
+import { importPaper, listPapers, type Paper } from "./api";
 import AssistantPanel from "./components/AssistantPanel";
 import PdfReader, { type PdfSelection } from "./components/PdfReader";
 
@@ -26,6 +26,14 @@ export default function App() {
   const [selection, setSelection] = useState<PdfSelection | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isImporting, setIsImporting] = useState(false);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(
+    () => window.innerWidth > 1050,
+  );
+  const [assistantOpen, setAssistantOpen] = useState(
+    () => window.innerWidth > 720,
+  );
 
   useEffect(() => {
     listPapers()
@@ -78,6 +86,29 @@ export default function App() {
     setSelection(null);
   };
 
+  const handlePdfImport = async (file: File | undefined) => {
+    if (!file || isImporting) {
+      return;
+    }
+
+    setIsImporting(true);
+    setError(null);
+    setImportMessage(null);
+    try {
+      const result = await importPaper(file);
+      const loadedPapers = await listPapers();
+      setPapers(loadedPapers);
+      setSelectedPaperId(result.paper.id);
+      setSelection(null);
+      setLibraryOpen(true);
+      setImportMessage(result.message);
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "PDF 导入失败。");
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -85,10 +116,26 @@ export default function App() {
           <p className="eyebrow">Local paper workspace</p>
           <h1>ResearchCopilot</h1>
         </div>
-        <div className="milestone-badge">M6 · 成熟论文卡片</div>
+        <div className="topbar-actions">
+          <button type="button" onClick={() => setLibraryOpen((open) => !open)}>
+            {libraryOpen ? "收起资料库" : "打开资料库"}
+          </button>
+          <button
+            type="button"
+            disabled={!selectedPaper}
+            onClick={() => setAssistantOpen((open) => !open)}
+          >
+            {assistantOpen ? "收起助手" : "打开助手"}
+          </button>
+          <div className="milestone-badge">第一版 · 阅读闭环</div>
+        </div>
       </header>
 
-      <div className="workspace">
+      <div
+        className={`workspace${libraryOpen ? "" : " library-collapsed"}${
+          assistantOpen ? "" : " assistant-collapsed"
+        }`}
+      >
         <aside className="library-panel">
           <div className="panel-heading">
             <p className="eyebrow">本地资料库</p>
@@ -96,12 +143,26 @@ export default function App() {
             <span>{papers.length} 篇</span>
           </div>
 
+          <label className="import-paper-button">
+            <input
+              type="file"
+              accept="application/pdf,.pdf"
+              disabled={isImporting}
+              onChange={(event) => {
+                void handlePdfImport(event.target.files?.[0]);
+                event.currentTarget.value = "";
+              }}
+            />
+            {isImporting ? "正在导入…" : "+ 导入 PDF"}
+          </label>
+          {importMessage && <p className="import-message">{importMessage}</p>}
+
           {isLoading && <p className="muted panel-message">正在扫描论文…</p>}
           {error && <p className="error panel-message">{error}</p>}
           {!isLoading && !error && papers.length === 0 && (
             <div className="panel-message empty-library">
               <strong>还没有本地论文</strong>
-              <p>将 PDF 放入 data/raw 后刷新页面。</p>
+              <p>点击“导入 PDF”，选择电脑上的论文即可开始。</p>
             </div>
           )}
 
@@ -135,13 +196,15 @@ export default function App() {
               onPageChange={changePage}
               onTextSelection={setSelection}
             />
-            <AssistantPanel
-              key={selectedPaper.id}
-              paper={selectedPaper}
-              selection={selection}
-              onClearSelection={() => setSelection(null)}
-              onNavigateToPage={changePage}
-            />
+            {assistantOpen && (
+              <AssistantPanel
+                key={selectedPaper.id}
+                paper={selectedPaper}
+                selection={selection}
+                onClearSelection={() => setSelection(null)}
+                onNavigateToPage={changePage}
+              />
+            )}
           </>
         ) : (
           <section className="welcome-state">

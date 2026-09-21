@@ -19,7 +19,7 @@ import {
 import type { PdfSelection } from "./PdfReader";
 
 
-type AssistantTab = "ask" | "evidence" | "history" | "summary";
+type AssistantTab = "ask" | "evidence" | "history" | "summary" | "info";
 
 const CATEGORY_OPTIONS: Array<{ value: ReadingCategory; label: string }> = [
   { value: "unclassified", label: "待分类" },
@@ -87,6 +87,15 @@ function HistoryCard({
   const [saveError, setSaveError] = useState<string | null>(null);
 
   const save = async (confirmed: boolean) => {
+    if (confirmed && !note.trim()) {
+      setSaveError("请先写下你核对原文后的个人理解。");
+      return;
+    }
+    if (confirmed && category === "unclassified") {
+      setSaveError("请选择这条记录进入论文卡片的栏目。");
+      return;
+    }
+
     setIsSaving(true);
     setSaveError(null);
     try {
@@ -109,7 +118,7 @@ function HistoryCard({
   return (
     <article className={record.confirmed ? "history-card confirmed" : "history-card"}>
       <div className="history-heading">
-        <span>{record.confirmed ? "已人工确认" : "待人工确认"}</span>
+        <span>{record.confirmed ? "已加入论文卡片" : "AI 草稿 · 待核对"}</span>
         <time dateTime={record.created_at}>
           {new Date(record.created_at).toLocaleString("zh-CN")}
         </time>
@@ -134,7 +143,7 @@ function HistoryCard({
         id={`note-${record.id}`}
         value={note}
         onChange={(event) => setNote(event.target.value)}
-        placeholder="写下你核对原文后的理解、疑问或反例……"
+        placeholder="必填：用自己的话写下理解、疑问或反例……"
         rows={3}
       />
       <label htmlFor={`category-${record.id}`}>进入论文卡片的栏目</label>
@@ -158,7 +167,7 @@ function HistoryCard({
           disabled={isSaving}
           onClick={() => void save(record.confirmed)}
         >
-          {isSaving ? "保存中…" : "保存备注"}
+          {isSaving ? "保存中…" : "保存草稿"}
         </button>
         {record.confirmed ? (
           <a href={exportReadingRecordUrl(paperId, record.id)} download>
@@ -171,7 +180,7 @@ function HistoryCard({
             disabled={isSaving}
             onClick={() => void save(true)}
           >
-            核对完成并确认
+            核对完成，加入论文卡片
           </button>
         )}
       </div>
@@ -216,6 +225,17 @@ export default function AssistantPanel({
   const confirmedRecordCount = history.filter(
     (record) => record.confirmed,
   ).length;
+
+  const useSelection = (instruction: string) => {
+    if (!selection) {
+      return;
+    }
+    const excerpt = selection.text.slice(0, 1400);
+    setQuestion(
+      `${instruction}\n\nPDF 第 ${selection.sourcePage} 页原文：\n${excerpt}`,
+    );
+    setActiveTab("ask");
+  };
 
   const prepareCard = async () => {
     setCardError(null);
@@ -329,7 +349,7 @@ export default function AssistantPanel({
           aria-selected={activeTab === "history"}
           onClick={() => setActiveTab("history")}
         >
-          记录{history.length > 0 ? ` ${history.length}` : ""}
+          笔记{history.length > 0 ? ` ${history.length}` : ""}
         </button>
         <button
           type="button"
@@ -339,6 +359,15 @@ export default function AssistantPanel({
           onClick={() => setActiveTab("summary")}
         >
           总结
+        </button>
+        <button
+          type="button"
+          className={activeTab === "info" ? "active" : ""}
+          role="tab"
+          aria-selected={activeTab === "info"}
+          onClick={() => setActiveTab("info")}
+        >
+          信息
         </button>
       </div>
 
@@ -403,10 +432,27 @@ export default function AssistantPanel({
               <blockquote>{selection.text}</blockquote>
               <button
                 type="button"
-                className="use-selection-button"
-                onClick={() => setQuestion(selection.text)}
+                onClick={() => useSelection("请准确翻译下面的英文原文，并保留专业术语。")}
               >
-                用这段原文检索
+                翻译
+              </button>
+              <button
+                type="button"
+                onClick={() => useSelection("请用中文解释下面这段原文，并说明理解它需要的前置知识。")}
+              >
+                解释
+              </button>
+              <button
+                type="button"
+                onClick={() => useSelection("请拆解下面原文涉及的公式或符号，说明变量、维度、步骤和直觉。")}
+              >
+                公式
+              </button>
+              <button
+                type="button"
+                onClick={() => useSelection("请基于论文证据回答我对下面原文的疑问：")}
+              >
+                提问
               </button>
             </section>
           )}
@@ -528,7 +574,7 @@ export default function AssistantPanel({
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === "summary" ? (
         <div className="assistant-content summary-content">
           <p className="eyebrow">结构化论文卡片</p>
           <h2>只汇总你已确认的理解</h2>
@@ -582,9 +628,32 @@ export default function AssistantPanel({
             </div>
           )}
         </div>
+      ) : (
+        <div className="assistant-content info-content">
+          <p className="eyebrow">当前论文信息</p>
+          <h2>{paper.name}</h2>
+          <dl>
+            <div>
+              <dt>PDF 页数</dt>
+              <dd>{paper.page_count ?? "读取失败"}</dd>
+            </div>
+            <div>
+              <dt>本地位置</dt>
+              <dd>data/raw/{paper.relative_path}</dd>
+            </div>
+            <div>
+              <dt>AI 数据范围</dt>
+              <dd>仅发送问题和最多 5 段检索证据，不上传整篇 PDF。</dd>
+            </div>
+            <div>
+              <dt>笔记状态</dt>
+              <dd>{confirmedRecordCount} 条记录已加入论文卡片</dd>
+            </div>
+          </dl>
+        </div>
       )}
 
-      {activeTab !== "summary" && <form
+      {(activeTab === "ask" || activeTab === "evidence") && <form
         className="question-box"
         onSubmit={(event) => {
           event.preventDefault();
@@ -592,6 +661,9 @@ export default function AssistantPanel({
         }}
       >
         <label htmlFor="question">向当前论文提问</label>
+        <p className="send-scope">
+          发送给 DeepSeek：你的问题与最多 5 段本地检索证据；不会发送整篇论文。
+        </p>
         <textarea
           id="question"
           value={question}

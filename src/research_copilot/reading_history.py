@@ -93,6 +93,14 @@ class ReadingHistoryStore:
         personal_note: str,
         category: ReadingCategory = "unclassified",
     ) -> ReadingRecord:
+        cleaned_note = personal_note.strip()
+        if confirmed and not cleaned_note:
+            raise ValueError(
+                "加入论文卡片前，请先写下核对原文后的个人理解。"
+            )
+        if confirmed and category == "unclassified":
+            raise ValueError("加入论文卡片前，请先选择记录所属栏目。")
+
         records = self.list_records(paper_id)
         for index, record in enumerate(records):
             if record.id != record_id:
@@ -101,7 +109,7 @@ class ReadingHistoryStore:
             updated_record = record.model_copy(
                 update={
                     "confirmed": confirmed,
-                    "personal_note": personal_note.strip(),
+                    "personal_note": cleaned_note,
                     "category": category,
                 }
             )

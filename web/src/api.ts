@@ -5,6 +5,12 @@ export type Paper = {
   page_count: number | null;
 };
 
+export type PaperImportResult = {
+  paper: Paper;
+  imported: boolean;
+  message: string;
+};
+
 export type SearchMode = "keyword" | "semantic" | "hybrid";
 export type ReadingCategory =
   | "unclassified"
@@ -104,6 +110,23 @@ export async function listPapers(): Promise<Paper[]> {
   }
 
   return (await response.json()) as Paper[];
+}
+
+export async function importPaper(file: File): Promise<PaperImportResult> {
+  const response = await fetch("/api/papers/import", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/pdf",
+      "X-PDF-Filename": encodeURIComponent(file.name),
+    },
+    body: file,
+  });
+
+  if (!response.ok) {
+    throw await responseError(response, "PDF 导入失败");
+  }
+
+  return (await response.json()) as PaperImportResult;
 }
 
 export function paperFileUrl(paperId: string): string {

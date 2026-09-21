@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+from io import BytesIO
 from pathlib import Path
 from typing import Literal
+from urllib.parse import unquote
+from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -34,6 +37,7 @@ DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
 DEFAULT_HISTORY_DIRECTORY = PROJECT_ROOT / "artifacts" / "reading_history"
 DEFAULT_CARD_DIRECTORY = PROJECT_ROOT / "artifacts" / "paper_cards"
+MAX_PDF_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
 class PaperSummary(BaseModel):
@@ -41,6 +45,12 @@ class PaperSummary(BaseModel):
     name: str
     relative_path: str
     page_count: int | None
+
+
+class PaperImportResult(BaseModel):
+    paper: PaperSummary
+    imported: bool
+    message: str
 
 
 class PaperSearchRequest(BaseModel):
@@ -91,6 +101,39 @@ class PaperLibrary:
 
         raise KeyError(paper_id)
 
+    def import_pdf(self, filename: str, content: bytes) -> PaperImportResult:
+        if not content or len(content) > MAX_PDF_UPLOAD_BYTES:
+            raise ValueError("PDF 文件为空或超过 100 MB 大小限制。")
+
+        safe_name = Path(filename.replace("\\", "/")).name.strip()
+        if not safe_name.lower().endswith(".pdf"):
+            raise ValueError("只能导入扩展名为 .pdf 的文件。")
+
+        try:
+            PdfReader(BytesIO(content))
+        except Exception as error:
+            raise ValueError("文件不是有效的 PDF，或 PDF 已损坏。") from error
+
+        digest = hashlib.sha256(content).hexdigest()
+        for existing_path in self._pdf_paths():
+            if self._file_digest(existing_path) == digest:
+                return PaperImportResult(
+                    paper=self._summarize(existing_path),
+                    imported=False,
+                    message="这篇论文已经在本地资料库中。",
+                )
+
+        self.paper_directory.mkdir(parents=True, exist_ok=True)
+        output_path = self._available_path(safe_name)
+        temporary_path = self.paper_directory / f".{uuid4().hex}.uploading"
+        temporary_path.write_bytes(content)
+        temporary_path.replace(output_path)
+        return PaperImportResult(
+            paper=self._summarize(output_path),
+            imported=True,
+            message="PDF 已导入本地资料库。",
+        )
+
     def _pdf_paths(self) -> list[Path]:
         if not self.paper_directory.exists():
             return []
@@ -127,6 +170,24 @@ class PaperLibrary:
 
     def _relative_path(self, path: Path) -> str:
         return path.relative_to(self.paper_directory).as_posix()
+
+    @staticmethod
+    def _file_digest(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as source_file:
+            for block in iter(lambda: source_file.read(1024 * 1024), b""):
+                digest.update(block)
+        return digest.hexdigest()
+
+    def _available_path(self, filename: str) -> Path:
+        candidate = self.paper_directory / filename
+        suffix_number = 2
+        while candidate.exists():
+            candidate = self.paper_directory / (
+                f"{Path(filename).stem}-{suffix_number}{Path(filename).suffix}"
+            )
+            suffix_number += 1
+        return candidate
 
 
 def create_app(
@@ -168,6 +229,18 @@ def create_app(
     @app.get("/api/papers", response_model=list[PaperSummary])
     def list_papers() -> list[PaperSummary]:
         return library.list_papers()
+
+    @app.post("/api/papers/import", response_model=PaperImportResult)
+    async def import_paper(request: Request) -> PaperImportResult:
+        encoded_filename = request.headers.get("x-pdf-filename", "")
+        if not encoded_filename:
+            raise HTTPException(status_code=400, detail="缺少 PDF 文件名。")
+
+        content = await request.body()
+        try:
+            return library.import_pdf(unquote(encoded_filename), content)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
 
     @app.get("/api/papers/{paper_id}/file")
     def get_paper_file(paper_id: str) -> FileResponse:
@@ -285,6 +358,8 @@ def create_app(
             )
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Record not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.get("/api/papers/{paper_id}/history/{record_id}/export")
     def export_reading_history(paper_id: str, record_id: str) -> FileResponse:
