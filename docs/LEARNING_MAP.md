@@ -196,6 +196,8 @@ Git：`cf95671 feat: add explainable hybrid retrieval`
 
 ## M5：本地阅读记录与人工确认
 
+Git：`ee33940 feat: persist reviewable reading records`
+
 新增文件：
 
 - `src/research_copilot/reading_history.py`
@@ -207,6 +209,20 @@ Git：`cf95671 feat: add explainable hybrid retrieval`
 以后学习：本地 JSON 持久化、原子文件替换、UUID、UTC 时间、FastAPI 的 GET/PATCH/下载接口、React 的副作用与列表状态、草稿和人工确认状态、Markdown front matter、为什么 AI 不能代替用户点击“已确认”。
 
 验证结果：自动测试覆盖保存、重启后读取、更新、未确认拒绝导出和 Markdown 导出；真实 DeepSeek 回答保存为“待人工确认”，整页刷新后“记录 1”仍然存在。
+
+## M6：成熟论文卡片与安全修订
+
+新增文件：
+
+- `src/research_copilot/paper_card_compiler.py`
+- `tests/test_paper_card_compiler.py`
+- `docs/M6_VALIDATION.md`
+
+重要修改：`reading_history.py`、`web_app.py`、`test_reading_history.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`App.tsx`、`styles.css`、`README.md`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`
+
+以后学习：确定性模板编译、Literal 类型、人工分类、Markdown 结构、来源追踪、统一差异、版本化文件、拒绝覆盖策略、浏览器 Blob 下载、为什么成熟笔记不能由模型自动确认。
+
+验证结果：至少两条确认记录才能生成；卡片保留页码、摘录和记录 ID；已有正式文件时显示差异并导出带时间戳的新版本。真实页面显示分类器和总结入口，没有替用户确认现有草稿。
 
 ## 后续阶段
 

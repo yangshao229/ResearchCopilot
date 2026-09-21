@@ -674,9 +674,9 @@ button:disabled {
   font-weight: 750;
 }
 
-.history-card > textarea {
+.history-card > textarea,
+.history-card > select {
   width: 100%;
-  resize: vertical;
   border: 1px solid #c5ccc5;
   border-radius: 8px;
   padding: 8px;
@@ -684,6 +684,14 @@ button:disabled {
   background: #fff;
   font-size: 11px;
   line-height: 1.5;
+}
+
+.history-card > textarea {
+  resize: vertical;
+}
+
+.history-card > select {
+  height: 34px;
 }
 
 .history-actions {
@@ -711,6 +719,90 @@ button:disabled {
   border-color: #50745d;
   color: #fff;
   background: #456750;
+}
+
+.summary-content h2 {
+  font-family: inherit;
+  font-size: 15px;
+}
+
+.prepare-card-button,
+.export-card-button {
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  color: #fff;
+  background: #365a45;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.paper-card-preview {
+  margin-top: 16px;
+  border: 1px solid #bcc9bf;
+  border-radius: 12px;
+  padding: 12px;
+  background: #fff;
+}
+
+.card-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.card-preview-heading strong {
+  color: #344d3d;
+  font-size: 12px;
+}
+
+.card-preview-heading span {
+  color: #768178;
+  font-size: 9px;
+}
+
+.paper-card-preview pre {
+  max-height: 360px;
+  margin: 0 0 10px;
+  overflow: auto;
+  border: 1px solid #e0e4df;
+  border-radius: 8px;
+  padding: 10px;
+  color: #3c4740;
+  background: #f8f9f6;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 9px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+}
+
+.card-diff {
+  margin: 12px 0;
+  border-top: 1px solid #dce2dc;
+  padding-top: 10px;
+}
+
+.card-diff > strong {
+  display: block;
+  margin-bottom: 7px;
+  color: #6d5432;
+  font-size: 10px;
+}
+
+.card-diff pre {
+  border-color: #e2d4bd;
+  color: #5b4933;
+  background: #fff9ee;
+}
+
+.card-safety-note {
+  margin: 8px 0 0;
+  color: #7a847d;
+  font-size: 9px;
+  text-align: center;
 }
 
 .question-box {

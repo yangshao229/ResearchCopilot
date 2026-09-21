@@ -6,6 +6,15 @@ export type Paper = {
 };
 
 export type SearchMode = "keyword" | "semantic" | "hybrid";
+export type ReadingCategory =
+  | "unclassified"
+  | "summary"
+  | "research_problem"
+  | "method"
+  | "experiments"
+  | "contributions"
+  | "limitations"
+  | "open_questions";
 
 export type SearchResult = {
   source_page: number;
@@ -59,6 +68,17 @@ export type ReadingRecord = {
   model: string;
   confirmed: boolean;
   personal_note: string;
+  category: ReadingCategory;
+};
+
+export type PaperCardPreview = {
+  paper_id: string;
+  paper_name: string;
+  confirmed_record_count: number;
+  markdown: string;
+  output_filename: string;
+  existing_card: boolean;
+  diff: string;
 };
 
 async function responseError(
@@ -155,13 +175,18 @@ export async function updateReadingRecord(
   recordId: string,
   confirmed: boolean,
   personalNote: string,
+  category: ReadingCategory,
 ): Promise<ReadingRecord> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}`,
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ confirmed, personal_note: personalNote }),
+      body: JSON.stringify({
+        confirmed,
+        personal_note: personalNote,
+        category,
+      }),
     },
   );
   if (!response.ok) {
@@ -175,4 +200,39 @@ export function exportReadingRecordUrl(
   recordId: string,
 ): string {
   return `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}/export`;
+}
+
+export async function previewPaperCard(
+  paperId: string,
+): Promise<PaperCardPreview> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/card/preview`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "论文卡片预览生成失败");
+  }
+  return (await response.json()) as PaperCardPreview;
+}
+
+export async function downloadPaperCard(
+  paperId: string,
+  paperName: string,
+  newVersion: boolean,
+): Promise<void> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/card/export?new_version=${newVersion}`,
+    { method: "POST" },
+  );
+  if (!response.ok) {
+    throw await responseError(response, "论文卡片导出失败");
+  }
+
+  const downloadUrl = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = downloadUrl;
+  link.download = `${paperName.replace(/\.pdf$/i, "")}.md`;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(downloadUrl);
 }

@@ -4,12 +4,24 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
 from research_copilot.paper_answer_service import AnswerCitation, PaperAnswer
 from research_copilot.paper_search_service import SearchMode
+
+ReadingCategory = Literal[
+    "unclassified",
+    "summary",
+    "research_problem",
+    "method",
+    "experiments",
+    "contributions",
+    "limitations",
+    "open_questions",
+]
 
 
 class ReadingRecord(BaseModel):
@@ -28,6 +40,7 @@ class ReadingRecord(BaseModel):
     model: str
     confirmed: bool = False
     personal_note: str = ""
+    category: ReadingCategory = "unclassified"
 
 
 class ReadingHistoryStore:
@@ -78,6 +91,7 @@ class ReadingHistoryStore:
         record_id: str,
         confirmed: bool,
         personal_note: str,
+        category: ReadingCategory = "unclassified",
     ) -> ReadingRecord:
         records = self.list_records(paper_id)
         for index, record in enumerate(records):
@@ -88,6 +102,7 @@ class ReadingHistoryStore:
                 update={
                     "confirmed": confirmed,
                     "personal_note": personal_note.strip(),
+                    "category": category,
                 }
             )
             records[index] = updated_record

@@ -2,11 +2,15 @@ import { useEffect, useState } from "react";
 
 import {
   answerPaper,
+  downloadPaperCard,
   exportReadingRecordUrl,
   listReadingHistory,
+  previewPaperCard,
   searchPaper,
   type Paper,
   type PaperAnswer,
+  type PaperCardPreview,
+  type ReadingCategory,
   type ReadingRecord,
   type SearchMode,
   type SearchResult,
@@ -15,7 +19,18 @@ import {
 import type { PdfSelection } from "./PdfReader";
 
 
-type AssistantTab = "ask" | "evidence" | "history";
+type AssistantTab = "ask" | "evidence" | "history" | "summary";
+
+const CATEGORY_OPTIONS: Array<{ value: ReadingCategory; label: string }> = [
+  { value: "unclassified", label: "待分类" },
+  { value: "summary", label: "一句话结论" },
+  { value: "research_problem", label: "研究问题" },
+  { value: "method", label: "方法" },
+  { value: "experiments", label: "实验" },
+  { value: "contributions", label: "贡献" },
+  { value: "limitations", label: "局限" },
+  { value: "open_questions", label: "未解决问题" },
+];
 
 type CompletedSearch = {
   query: string;
@@ -67,6 +82,7 @@ function HistoryCard({
   onSaved,
 }: HistoryCardProps) {
   const [note, setNote] = useState(record.personal_note);
+  const [category, setCategory] = useState<ReadingCategory>(record.category);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -75,7 +91,13 @@ function HistoryCard({
     setSaveError(null);
     try {
       onSaved(
-        await updateReadingRecord(paperId, record.id, confirmed, note),
+        await updateReadingRecord(
+          paperId,
+          record.id,
+          confirmed,
+          note,
+          category,
+        ),
       );
     } catch (reason: unknown) {
       setSaveError(reason instanceof Error ? reason.message : "保存失败。");
@@ -115,12 +137,26 @@ function HistoryCard({
         placeholder="写下你核对原文后的理解、疑问或反例……"
         rows={3}
       />
+      <label htmlFor={`category-${record.id}`}>进入论文卡片的栏目</label>
+      <select
+        id={`category-${record.id}`}
+        value={category}
+        onChange={(event) =>
+          setCategory(event.target.value as ReadingCategory)
+        }
+      >
+        {CATEGORY_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
       {saveError && <p className="search-error">{saveError}</p>}
       <div className="history-actions">
         <button
           type="button"
           disabled={isSaving}
-          onClick={() => void save(false)}
+          onClick={() => void save(record.confirmed)}
         >
           {isSaving ? "保存中…" : "保存备注"}
         </button>
@@ -161,6 +197,10 @@ export default function AssistantPanel({
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ReadingRecord[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [cardPreview, setCardPreview] = useState<PaperCardPreview | null>(null);
+  const [cardError, setCardError] = useState<string | null>(null);
+  const [isPreparingCard, setIsPreparingCard] = useState(false);
+  const [isExportingCard, setIsExportingCard] = useState(false);
 
   useEffect(() => {
     listReadingHistory(paper.id)
@@ -173,6 +213,41 @@ export default function AssistantPanel({
   }, [paper.id]);
 
   const isBusy = isSearching || isAnswering;
+  const confirmedRecordCount = history.filter(
+    (record) => record.confirmed,
+  ).length;
+
+  const prepareCard = async () => {
+    setCardError(null);
+    setIsPreparingCard(true);
+    try {
+      setCardPreview(await previewPaperCard(paper.id));
+    } catch (reason: unknown) {
+      setCardError(
+        reason instanceof Error ? reason.message : "论文卡片预览生成失败。",
+      );
+    } finally {
+      setIsPreparingCard(false);
+    }
+  };
+
+  const exportCard = async () => {
+    setCardError(null);
+    setIsExportingCard(true);
+    try {
+      await downloadPaperCard(
+        paper.id,
+        paper.name,
+        cardPreview?.existing_card ?? false,
+      );
+    } catch (reason: unknown) {
+      setCardError(
+        reason instanceof Error ? reason.message : "论文卡片导出失败。",
+      );
+    } finally {
+      setIsExportingCard(false);
+    }
+  };
 
   const runSearch = async () => {
     const query = question.trim();
@@ -256,7 +331,13 @@ export default function AssistantPanel({
         >
           记录{history.length > 0 ? ` ${history.length}` : ""}
         </button>
-        <button type="button" role="tab" aria-selected="false" disabled>
+        <button
+          type="button"
+          className={activeTab === "summary" ? "active" : ""}
+          role="tab"
+          aria-selected={activeTab === "summary"}
+          onClick={() => setActiveTab("summary")}
+        >
           总结
         </button>
       </div>
@@ -413,7 +494,7 @@ export default function AssistantPanel({
             </div>
           )}
         </div>
-      ) : (
+      ) : activeTab === "history" ? (
         <div className="assistant-content history-content">
           <p className="eyebrow">本地阅读记录</p>
           <h2>人工确认后再进入正式笔记</h2>
@@ -430,6 +511,7 @@ export default function AssistantPanel({
                   record={record}
                   onNavigateToPage={onNavigateToPage}
                   onSaved={(updatedRecord) => {
+                    setCardPreview(null);
                     setHistory((currentHistory) =>
                       currentHistory.map((item) =>
                         item.id === updatedRecord.id ? updatedRecord : item,
@@ -446,9 +528,63 @@ export default function AssistantPanel({
             </div>
           )}
         </div>
+      ) : (
+        <div className="assistant-content summary-content">
+          <p className="eyebrow">结构化论文卡片</p>
+          <h2>只汇总你已确认的理解</h2>
+          <p className="assistant-intro">
+            当前有 {confirmedRecordCount} 条已确认记录。至少需要 2 条，并先在“记录”中选择它们所属的栏目。
+          </p>
+          <button
+            type="button"
+            className="prepare-card-button"
+            disabled={confirmedRecordCount < 2 || isPreparingCard}
+            onClick={() => void prepareCard()}
+          >
+            {isPreparingCard ? "正在生成预览…" : "生成卡片预览"}
+          </button>
+          {cardError && <p className="search-error">{cardError}</p>}
+          {cardPreview ? (
+            <section className="paper-card-preview">
+              <div className="card-preview-heading">
+                <strong>Markdown 预览</strong>
+                <span>{cardPreview.confirmed_record_count} 条确认记录</span>
+              </div>
+              <pre>{cardPreview.markdown}</pre>
+              {cardPreview.existing_card && (
+                <div className="card-diff">
+                  <strong>与已有正式卡片的差异</strong>
+                  <pre>{cardPreview.diff || "内容没有变化。"}</pre>
+                </div>
+              )}
+              <button
+                type="button"
+                className="export-card-button"
+                disabled={isExportingCard}
+                onClick={() => void exportCard()}
+              >
+                {isExportingCard
+                  ? "正在导出…"
+                  : cardPreview.existing_card
+                    ? "确认差异并导出为新版本"
+                    : "确认内容并导出正式卡片"}
+              </button>
+              <p className="card-safety-note">
+                {cardPreview.existing_card
+                  ? "原卡片不会被修改；新内容将保存为带时间戳的版本。"
+                  : "以后再次导出时会先显示差异，不会覆盖本文件。"}
+              </p>
+            </section>
+          ) : (
+            <div className="empty-conversation">
+              <span>尚未生成卡片预览</span>
+              <p>先确认并分类至少两条阅读记录。</p>
+            </div>
+          )}
+        </div>
       )}
 
-      <form
+      {activeTab !== "summary" && <form
         className="question-box"
         onSubmit={(event) => {
           event.preventDefault();
@@ -480,7 +616,7 @@ export default function AssistantPanel({
               : "生成带引用回答"}
           </button>
         </div>
-      </form>
+      </form>}
     </aside>
   );
 }

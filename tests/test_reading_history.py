@@ -60,6 +60,7 @@ def test_confirmed_record_exports_reviewable_markdown(tmp_path: Path) -> None:
         created.id,
         confirmed=True,
         personal_note="My understanding: no recurrent dependency between positions.",
+        category="method",
     )
     output_path = store.export_record("paper-id", created.id)
     markdown = output_path.read_text(encoding="utf-8")
@@ -67,3 +68,4 @@ def test_confirmed_record_exports_reviewable_markdown(tmp_path: Path) -> None:
     assert "review_status: confirmed" in markdown
     assert "PDF 第 2 页" in markdown
     assert "My understanding" in markdown
+    assert store.list_records("paper-id")[0].category == "method"

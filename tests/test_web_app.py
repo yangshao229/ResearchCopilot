@@ -5,9 +5,12 @@ from pypdf import PdfWriter
 
 from research_copilot.page_store import save_page_data
 from research_copilot.paper_answer_service import (
+    AnswerCitation,
     ModelAnswerDraft,
+    PaperAnswer,
     PaperAnswerService,
 )
+from research_copilot.paper_card_compiler import PaperCardCompiler
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.semantic_retriever import EmbeddingModel
@@ -350,3 +353,85 @@ def test_paper_answer_api_explains_missing_deepseek_key(
 
     assert response.status_code == 503
     assert "DEEPSEEK_API_KEY" in response.json()["detail"]
+
+
+def test_paper_card_api_previews_and_exports_confirmed_records(
+    tmp_path: Path,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    paper_directory.mkdir()
+    create_test_pdf(paper_directory / "attention.pdf")
+    history = ReadingHistoryStore(tmp_path / "history")
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+            history_store=history,
+            card_compiler=PaperCardCompiler(tmp_path / "cards"),
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    answer = PaperAnswer(
+        answer="Verified answer.",
+        explanation="Explanation.",
+        citations=[
+            AnswerCitation(
+                evidence_id=1,
+                source_page=4,
+                quote="Verified source text.",
+            )
+        ],
+        insufficient_evidence=False,
+        uncertainty="",
+        evidence=[],
+        provider="fake",
+        model="fake-model",
+    )
+    first = history.add_record(
+        paper_id,
+        "attention.pdf",
+        "What is the method?",
+        "hybrid",
+        answer,
+    )
+    second = history.add_record(
+        paper_id,
+        "attention.pdf",
+        "What is the contribution?",
+        "hybrid",
+        answer,
+    )
+    history.update_record(paper_id, first.id, True, "My method.", "method")
+    history.update_record(
+        paper_id,
+        second.id,
+        True,
+        "My contribution.",
+        "contributions",
+    )
+
+    preview_response = client.get(f"/api/papers/{paper_id}/card/preview")
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["confirmed_record_count"] == 2
+    assert "My method." in preview["markdown"]
+    assert "[PDF 第 4 页]" in preview["markdown"]
+
+    export_response = client.post(f"/api/papers/{paper_id}/card/export")
+    assert export_response.status_code == 200
+    assert "review_status: confirmed" in export_response.text
+
+    second_export = client.post(f"/api/papers/{paper_id}/card/export")
+    assert second_export.status_code == 409
+
+    preview_with_existing = client.get(
+        f"/api/papers/{paper_id}/card/preview"
+    ).json()
+    assert preview_with_existing["existing_card"] is True
+    assert "--- existing/attention.md" in preview_with_existing["diff"]
+
+    version_export = client.post(
+        f"/api/papers/{paper_id}/card/export?new_version=true"
+    )
+    assert version_export.status_code == 200

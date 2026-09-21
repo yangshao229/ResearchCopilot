@@ -17,14 +17,23 @@ from research_copilot.paper_answer_service import (
     PaperAnswer,
     PaperAnswerService,
 )
+from research_copilot.paper_card_compiler import (
+    PaperCardCompiler,
+    PaperCardPreview,
+)
 from research_copilot.paper_search_service import PaperSearchService
-from research_copilot.reading_history import ReadingHistoryStore, ReadingRecord
+from research_copilot.reading_history import (
+    ReadingCategory,
+    ReadingHistoryStore,
+    ReadingRecord,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAPER_DIRECTORY = PROJECT_ROOT / "data" / "raw"
 DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
 DEFAULT_HISTORY_DIRECTORY = PROJECT_ROOT / "artifacts" / "reading_history"
+DEFAULT_CARD_DIRECTORY = PROJECT_ROOT / "artifacts" / "paper_cards"
 
 
 class PaperSummary(BaseModel):
@@ -65,6 +74,7 @@ class PaperSearchResult(BaseModel):
 class ReadingRecordUpdate(BaseModel):
     confirmed: bool
     personal_note: str = Field(default="", max_length=5000)
+    category: ReadingCategory = "unclassified"
 
 
 class PaperLibrary:
@@ -126,6 +136,7 @@ def create_app(
     search_service: PaperSearchService | None = None,
     answer_service: PaperAnswerService | None = None,
     history_store: ReadingHistoryStore | None = None,
+    card_compiler: PaperCardCompiler | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -134,6 +145,7 @@ def create_app(
     )
     answerer = answer_service or PaperAnswerService(searcher)
     history = history_store or ReadingHistoryStore(DEFAULT_HISTORY_DIRECTORY)
+    cards = card_compiler or PaperCardCompiler(DEFAULT_CARD_DIRECTORY)
 
     app = FastAPI(
         title="ResearchCopilot",
@@ -269,6 +281,7 @@ def create_app(
                 record_id,
                 request.confirmed,
                 request.personal_note,
+                request.category,
             )
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Record not found.") from error
@@ -287,6 +300,47 @@ def create_app(
             export_path,
             media_type="text/markdown; charset=utf-8",
             filename=export_path.name,
+        )
+
+    @app.get(
+        "/api/papers/{paper_id}/card/preview",
+        response_model=PaperCardPreview,
+    )
+    def preview_paper_card(paper_id: str) -> PaperCardPreview:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+            return cards.preview(
+                paper_id,
+                paper_path.name,
+                history.list_records(paper_id),
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/api/papers/{paper_id}/card/export")
+    def export_paper_card(
+        paper_id: str,
+        new_version: bool = False,
+    ) -> FileResponse:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+            output_path = cards.export(
+                paper_id,
+                paper_path.name,
+                history.list_records(paper_id),
+                new_version=new_version,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except (ValueError, FileExistsError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+        return FileResponse(
+            output_path,
+            media_type="text/markdown; charset=utf-8",
+            filename=output_path.name,
         )
 
     if frontend_path.is_dir():
