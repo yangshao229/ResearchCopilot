@@ -240,3 +240,5 @@ Git：`ee33940 feat: persist reviewable reading records`
 ## 后续阶段
 
 每完成一个后续里程碑，继续在这里记录新增文件、重要修改、验证结果与以后需要讲解的知识点。
+
+新增功能在进入实现前，还要在 `docs/research/` 保存对应的开源产品拆解报告，并在阶段记录中链接它。第一份报告是 [论文结构与问题路由拆解](research/2026-09-21-paper-structure-and-question-routing.md)。
