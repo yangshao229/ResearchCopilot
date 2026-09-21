@@ -40,6 +40,28 @@ button:disabled {
   background: #e8ebe6;
 }
 
+.startup-error {
+  max-width: 680px;
+  margin: 80px auto;
+  padding: 24px;
+}
+
+.startup-error h1 {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.startup-error p {
+  line-height: 1.6;
+}
+
+.startup-error pre {
+  border-radius: 8px;
+  padding: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: white;
+}
+
 .topbar {
   height: 76px;
   padding: 14px 24px;
@@ -83,6 +105,7 @@ button:disabled {
 
 .workspace {
   height: calc(100vh - 76px);
+  height: calc(100dvh - 76px);
   display: grid;
   grid-template-columns: 238px minmax(520px, 1fr) 340px;
   overflow: hidden;
@@ -190,6 +213,7 @@ button:disabled {
 
 .reader {
   min-width: 0;
+  min-height: 0;
   background: #dfe3de;
   display: flex;
   flex-direction: column;
@@ -254,6 +278,7 @@ button:disabled {
 
 .document-stage {
   flex: 1;
+  min-height: 0;
   padding: 26px;
   overflow: auto;
   display: flex;
@@ -275,8 +300,9 @@ button:disabled {
 
 .assistant-panel {
   border-left: 1px solid #cbd1ca;
-  display: flex;
-  flex-direction: column;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .assistant-tabs {
@@ -305,7 +331,7 @@ button:disabled {
 }
 
 .assistant-content {
-  flex: 1;
+  min-height: 0;
   padding: 22px;
   overflow-y: auto;
 }

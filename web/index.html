@@ -10,7 +10,45 @@
     <title>ResearchCopilot</title>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <main
+        id="startup-status"
+        style="max-width: 680px; margin: 80px auto; padding: 24px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; color: #26312b;"
+      >
+        <h1 style="margin: 0 0 12px; font-size: 28px;">ResearchCopilot</h1>
+        <p style="line-height: 1.6;">正在启动本地论文阅读器…</p>
+      </main>
+    </div>
+    <script>
+      function showStartupError(message) {
+        const status = document.getElementById("startup-status");
+        if (!status) return;
+        status.innerHTML = "";
+
+        const heading = document.createElement("h1");
+        heading.textContent = "ResearchCopilot 启动失败";
+        const explanation = document.createElement("p");
+        explanation.textContent =
+          "Safari 已连接本地服务，但前端程序没有成功启动。请将下面的信息发给助手。";
+        const details = document.createElement("pre");
+        details.style.whiteSpace = "pre-wrap";
+        details.style.padding = "12px";
+        details.style.borderRadius = "8px";
+        details.style.background = "#ffffff";
+        details.textContent = message;
+        status.append(heading, explanation, details);
+      }
+
+      window.addEventListener("error", (event) => {
+        showStartupError(event.message || "前端脚本加载失败。");
+      });
+      window.addEventListener("unhandledrejection", (event) => {
+        const reason = event.reason;
+        showStartupError(
+          reason instanceof Error ? reason.message : String(reason),
+        );
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
