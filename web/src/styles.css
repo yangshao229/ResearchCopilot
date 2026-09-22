@@ -413,13 +413,16 @@ button:disabled {
   display: flex;
   align-items: flex-end;
   gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: thin;
 }
 
 .assistant-tabs button {
+  flex: 0 0 auto;
   height: 42px;
   border: 0;
   border-bottom: 2px solid transparent;
-  padding: 0 10px;
+  padding: 0 8px;
   color: #78827c;
   background: transparent;
   font-size: 12px;
@@ -448,6 +451,77 @@ button:disabled {
   color: #667169;
   font-size: 13px;
   line-height: 1.65;
+}
+
+.outline-status {
+  margin: 16px 0 10px;
+  border: 1px solid #cbd6cd;
+  border-radius: 9px;
+  padding: 10px 12px;
+  color: #47604f;
+  background: #f1f6f2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 10px;
+}
+
+.outline-warning {
+  margin: 8px 0;
+  border-left: 3px solid #c59a53;
+  padding: 7px 9px;
+  color: #715b38;
+  background: #fff8e9;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.paper-outline {
+  margin-top: 12px;
+  border: 1px solid #d5dbd5;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.paper-outline button {
+  width: 100%;
+  min-height: 42px;
+  border: 0;
+  border-bottom: 1px solid #e6e9e5;
+  padding-top: 8px;
+  padding-right: 10px;
+  padding-bottom: 8px;
+  color: #34453a;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  text-align: left;
+}
+
+.paper-outline button:last-child {
+  border-bottom: 0;
+}
+
+.paper-outline button:hover {
+  background: #f1f6f2;
+}
+
+.paper-outline button span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.paper-outline button small {
+  flex: 0 0 auto;
+  color: #738078;
+  font-size: 9px;
 }
 
 .selection-card {

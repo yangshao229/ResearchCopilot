@@ -26,6 +26,17 @@ def create_test_pdf(path: Path, page_count: int = 2) -> None:
         writer.write(pdf_file)
 
 
+def create_bookmarked_test_pdf(path: Path) -> None:
+    writer = PdfWriter()
+    for _ in range(3):
+        writer.add_blank_page(width=72, height=72)
+    introduction = writer.add_outline_item("1 Introduction", 0)
+    writer.add_outline_item("1.1 Motivation", 1, parent=introduction)
+    writer.add_outline_item("2 Method", 2)
+    with path.open("wb") as pdf_file:
+        writer.write(pdf_file)
+
+
 def test_paper_api_lists_local_pdfs(tmp_path: Path) -> None:
     paper_path = tmp_path / "attention.pdf"
     create_test_pdf(paper_path)
@@ -138,6 +149,31 @@ def test_paper_api_serves_pdf_file(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert response.headers["content-type"] == "application/pdf"
     assert response.content.startswith(b"%PDF")
+
+
+def test_paper_api_exposes_clickable_pdf_structure(tmp_path: Path) -> None:
+    paper_path = tmp_path / "attention.pdf"
+    create_bookmarked_test_pdf(paper_path)
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path,
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+
+    response = client.get(f"/api/papers/{paper_id}/structure")
+
+    assert response.status_code == 200
+    structure = response.json()
+    assert structure["method"] == "bookmarks"
+    assert structure["sections"][1] == {
+        "title": "1.1 Motivation",
+        "level": 2,
+        "source_page": 2,
+        "source": "bookmark",
+        "confidence": "high",
+    }
 
 
 def test_paper_api_rejects_unknown_id(tmp_path: Path) -> None:
@@ -433,6 +469,64 @@ def test_paper_answer_api_explains_missing_deepseek_key(
 
     assert response.status_code == 503
     assert "DEEPSEEK_API_KEY" in response.json()["detail"]
+
+
+def test_paper_answer_api_routes_page_count_without_deepseek(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    paper_path = tmp_path / "attention.pdf"
+    create_test_pdf(paper_path, page_count=3)
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path,
+            processed_directory=tmp_path / "processed",
+            frontend_directory=tmp_path / "missing-frontend",
+            history_store=ReadingHistoryStore(tmp_path / "history"),
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+
+    response = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={"query": "这篇论文多少页？", "mode": "hybrid"},
+    )
+
+    assert response.status_code == 200
+    answer = response.json()
+    assert answer["answer"] == "这篇 PDF 一共有 3 页。"
+    assert answer["provider"] == "local"
+    assert answer["evidence"] == []
+    assert answer["history_id"]
+
+
+def test_paper_answer_api_refuses_unreliable_paragraph_count(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    paper_path = tmp_path / "attention.pdf"
+    create_test_pdf(paper_path)
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path,
+            frontend_directory=tmp_path / "missing-frontend",
+            history_store=ReadingHistoryStore(tmp_path / "history"),
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+
+    response = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={"query": "这一共有多少个段落？", "mode": "hybrid"},
+    )
+
+    assert response.status_code == 200
+    answer = response.json()
+    assert answer["provider"] == "local"
+    assert answer["insufficient_evidence"] is True
+    assert answer["evidence"] == []
 
 
 def test_paper_card_api_previews_and_exports_confirmed_records(

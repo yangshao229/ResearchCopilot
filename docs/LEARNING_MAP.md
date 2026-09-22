@@ -242,3 +242,19 @@ Git：`ee33940 feat: persist reviewable reading records`
 每完成一个后续里程碑，继续在这里记录新增文件、重要修改、验证结果与以后需要讲解的知识点。
 
 新增功能在进入实现前，还要在 `docs/research/` 保存对应的开源产品拆解报告，并在阶段记录中链接它。第一份报告是 [论文结构与问题路由拆解](research/2026-09-21-paper-structure-and-question-routing.md)。
+
+## M6.2：论文结构导航与问题路由
+
+新增文件：
+
+- `src/research_copilot/paper_structure.py`
+- `src/research_copilot/paper_question_router.py`
+- `tests/test_paper_structure.py`
+- `tests/test_paper_question_router.py`
+- `docs/M6_2_VALIDATION.md`
+
+重要修改：`web_app.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`PdfReader.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`
+
+以后学习：PDF 书签树、递归遍历、Pydantic 结构模型、启发式规则与置信度、确定性问题路由、为什么全文统计不能依靠 Top-k RAG、React 异步加载、目录层级渲染、程序跳页与滚动事件竞争、真实页面验收为何能发现自动测试遗漏的问题。
+
+验证结果：真实 `sample.pdf` 从自带书签读取 22 个标题；目录可点击跳页；结构问题本地回答且不调用 API；段落统计无法可靠完成时安全拒绝；后端 `55 passed`，前端构建通过。详细过程见 [M6.2 验收](M6_2_VALIDATION.md)。本阶段设计依据见 [论文结构与问题路由拆解](research/2026-09-21-paper-structure-and-question-routing.md)。

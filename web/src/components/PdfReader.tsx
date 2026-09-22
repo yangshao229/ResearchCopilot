@@ -31,6 +31,7 @@ export default function PdfReader({
   const stageRef = useRef<HTMLDivElement | null>(null);
   const pageElements = useRef(new Map<number, HTMLDivElement>());
   const pageChangeCameFromScroll = useRef(false);
+  const programmaticTargetPage = useRef<number | null>(null);
 
   useEffect(() => {
     setPageCount(paper.page_count ?? 0);
@@ -58,7 +59,11 @@ export default function PdfReader({
       pageChangeCameFromScroll.current = false;
       return;
     }
-    pageElements.current.get(pageNumber)?.scrollIntoView({ block: "start" });
+    const targetElement = pageElements.current.get(pageNumber);
+    if (targetElement) {
+      programmaticTargetPage.current = pageNumber;
+      targetElement.scrollIntoView({ block: "start" });
+    }
   }, [continuous, pageNumber]);
 
   useEffect(() => {
@@ -71,6 +76,17 @@ export default function PdfReader({
     const updateVisiblePage = () => {
       animationFrame = 0;
       const stageTop = stage.getBoundingClientRect().top;
+      const programmaticTarget = programmaticTargetPage.current;
+      if (programmaticTarget !== null) {
+        const targetElement = pageElements.current.get(programmaticTarget);
+        const targetDistance = targetElement
+          ? Math.abs(targetElement.getBoundingClientRect().top - stageTop - 18)
+          : Number.POSITIVE_INFINITY;
+        if (targetDistance > 32) {
+          return;
+        }
+        programmaticTargetPage.current = null;
+      }
       let closestPage = pageNumber;
       let closestDistance = Number.POSITIVE_INFINITY;
       for (const [candidatePage, element] of pageElements.current) {
@@ -248,6 +264,19 @@ export default function PdfReader({
                   scale={fitWidth ? undefined : scale}
                   renderTextLayer
                   renderAnnotationLayer
+                  onRenderSuccess={() => {
+                    if (
+                      continuous &&
+                      renderedPage === pageNumber &&
+                      !pageChangeCameFromScroll.current
+                    ) {
+                      const targetElement = pageElements.current.get(renderedPage);
+                      if (targetElement) {
+                        programmaticTargetPage.current = renderedPage;
+                        targetElement.scrollIntoView({ block: "start" });
+                      }
+                    }
+                  }}
                 />
                 <span className="rendered-page-number">第 {renderedPage} 页</span>
               </div>

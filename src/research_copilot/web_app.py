@@ -24,7 +24,12 @@ from research_copilot.paper_card_compiler import (
     PaperCardCompiler,
     PaperCardPreview,
 )
+from research_copilot.paper_question_router import (
+    answer_structural_question,
+    classify_paper_question,
+)
 from research_copilot.paper_search_service import PaperSearchService
+from research_copilot.paper_structure import PaperStructure, extract_paper_structure
 from research_copilot.reading_history import (
     ReadingCategory,
     ReadingHistoryStore,
@@ -257,6 +262,27 @@ def create_app(
             media_type="application/pdf",
         )
 
+    @app.get(
+        "/api/papers/{paper_id}/structure",
+        response_model=PaperStructure,
+    )
+    def get_paper_structure(paper_id: str) -> PaperStructure:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Paper not found.",
+            ) from error
+
+        try:
+            return extract_paper_structure(paper_path)
+        except Exception as error:
+            raise HTTPException(
+                status_code=422,
+                detail="无法解析这篇 PDF 的目录结构。",
+            ) from error
+
     @app.post(
         "/api/papers/{paper_id}/search",
         response_model=list[PaperSearchResult],
@@ -298,13 +324,20 @@ def create_app(
             ) from error
 
         try:
-            answer = answerer.answer(
-                paper_path,
-                paper_id,
-                request.query,
-                request.mode,
-                limit=request.limit,
-            )
+            answer = None
+            if classify_paper_question(request.query) != "content":
+                answer = answer_structural_question(
+                    request.query,
+                    extract_paper_structure(paper_path),
+                )
+            if answer is None:
+                answer = answerer.answer(
+                    paper_path,
+                    paper_id,
+                    request.query,
+                    request.mode,
+                    limit=request.limit,
+                )
             record = history.add_record(
                 paper_id,
                 paper_path.name,

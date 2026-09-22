@@ -4,12 +4,14 @@ import {
   answerPaper,
   downloadPaperCard,
   exportReadingRecordUrl,
+  getPaperStructure,
   listReadingHistory,
   previewPaperCard,
   searchPaper,
   type Paper,
   type PaperAnswer,
   type PaperCardPreview,
+  type PaperStructure,
   type ReadingCategory,
   type ReadingRecord,
   type SearchMode,
@@ -19,7 +21,13 @@ import {
 import type { PdfSelection } from "./PdfReader";
 
 
-type AssistantTab = "ask" | "evidence" | "history" | "summary" | "info";
+type AssistantTab =
+  | "ask"
+  | "outline"
+  | "evidence"
+  | "history"
+  | "summary"
+  | "info";
 
 const CATEGORY_OPTIONS: Array<{ value: ReadingCategory; label: string }> = [
   { value: "unclassified", label: "待分类" },
@@ -194,7 +202,7 @@ export default function AssistantPanel({
   onClearSelection,
   onNavigateToPage,
 }: AssistantPanelProps) {
-  const [activeTab, setActiveTab] = useState<AssistantTab>("ask");
+  const [activeTab, setActiveTab] = useState<AssistantTab>("outline");
   const [question, setQuestion] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [completedSearch, setCompletedSearch] =
@@ -210,6 +218,9 @@ export default function AssistantPanel({
   const [cardError, setCardError] = useState<string | null>(null);
   const [isPreparingCard, setIsPreparingCard] = useState(false);
   const [isExportingCard, setIsExportingCard] = useState(false);
+  const [structure, setStructure] = useState<PaperStructure | null>(null);
+  const [structureError, setStructureError] = useState<string | null>(null);
+  const [isLoadingStructure, setIsLoadingStructure] = useState(true);
 
   useEffect(() => {
     listReadingHistory(paper.id)
@@ -219,6 +230,19 @@ export default function AssistantPanel({
           reason instanceof Error ? reason.message : "阅读记录加载失败。",
         );
       });
+  }, [paper.id]);
+
+  useEffect(() => {
+    setIsLoadingStructure(true);
+    setStructureError(null);
+    getPaperStructure(paper.id)
+      .then(setStructure)
+      .catch((reason: unknown) => {
+        setStructureError(
+          reason instanceof Error ? reason.message : "论文目录加载失败。",
+        );
+      })
+      .finally(() => setIsLoadingStructure(false));
   }, [paper.id]);
 
   const isBusy = isSearching || isAnswering;
@@ -326,6 +350,15 @@ export default function AssistantPanel({
       <div className="assistant-tabs" role="tablist" aria-label="阅读辅助功能">
         <button
           type="button"
+          className={activeTab === "outline" ? "active" : ""}
+          role="tab"
+          aria-selected={activeTab === "outline"}
+          onClick={() => setActiveTab("outline")}
+        >
+          目录
+        </button>
+        <button
+          type="button"
           className={activeTab === "ask" ? "active" : ""}
           role="tab"
           aria-selected={activeTab === "ask"}
@@ -376,7 +409,7 @@ export default function AssistantPanel({
           <p className="eyebrow">当前论文</p>
           <h2>{paper.name}</h2>
           <p className="assistant-intro">
-            系统先在本地检索论文证据，再让 DeepSeek 只根据这些证据回答并标注页码。
+            页数、目录和标题等结构问题在本地直接回答；内容问题先检索论文证据，再让 DeepSeek 只根据证据回答并标注页码。
           </p>
 
           {answer && (
@@ -389,9 +422,15 @@ export default function AssistantPanel({
             >
               <div className="answer-heading">
                 <strong>
-                  {answer.insufficient_evidence ? "证据不足" : "论文回答"}
+                  {answer.provider === "local"
+                    ? "本地结构分析"
+                    : answer.insufficient_evidence
+                      ? "证据不足"
+                      : "论文回答"}
                 </strong>
-                <span>{answer.model}</span>
+                <span>
+                  {answer.provider === "local" ? "未调用 API" : answer.model}
+                </span>
               </div>
               <p className="answer-direct">{answer.answer}</p>
               <div className="answer-section">
@@ -485,6 +524,55 @@ export default function AssistantPanel({
           </div>
 
           {error && <p className="search-error">{error}</p>}
+        </div>
+      ) : activeTab === "outline" ? (
+        <div className="assistant-content outline-content">
+          <p className="eyebrow">当前论文目录</p>
+          <h2>点击标题跳到 PDF 原文</h2>
+          {isLoadingStructure ? (
+            <div className="empty-conversation">
+              <span>正在读取目录…</span>
+            </div>
+          ) : structureError ? (
+            <p className="search-error">{structureError}</p>
+          ) : structure && structure.sections.length > 0 ? (
+            <>
+              <div className="outline-status">
+                <strong>
+                  {structure.method === "bookmarks"
+                    ? "PDF 自带目录"
+                    : "规则推断目录"}
+                </strong>
+                <span>{structure.sections.length} 个标题</span>
+              </div>
+              {structure.warnings.map((warning) => (
+                <p className="outline-warning" key={warning}>
+                  {warning}
+                </p>
+              ))}
+              <nav className="paper-outline" aria-label="论文目录">
+                {structure.sections.map((section, index) => (
+                  <button
+                    type="button"
+                    key={`${section.source_page}-${section.title}-${index}`}
+                    style={{ paddingLeft: `${12 + (section.level - 1) * 16}px` }}
+                    onClick={() => onNavigateToPage(section.source_page)}
+                  >
+                    <span>{section.title}</span>
+                    <small>第 {section.source_page} 页</small>
+                  </button>
+                ))}
+              </nav>
+            </>
+          ) : (
+            <div className="empty-conversation">
+              <span>无法可靠识别目录</span>
+              <p>
+                {structure?.warnings[0] ??
+                  "这篇 PDF 没有可用书签，也没有清晰的编号标题。"}
+              </p>
+            </div>
+          )}
         </div>
       ) : activeTab === "evidence" ? (
         <div className="assistant-content evidence-content">
@@ -662,7 +750,7 @@ export default function AssistantPanel({
       >
         <label htmlFor="question">向当前论文提问</label>
         <p className="send-scope">
-          发送给 DeepSeek：你的问题与最多 5 段本地检索证据；不会发送整篇论文。
+          结构问题只在本地处理；内容问题发送给 DeepSeek 的只有你的问题和最多 5 段本地证据，不会发送整篇论文。
         </p>
         <textarea
           id="question"

@@ -11,6 +11,21 @@ export type PaperImportResult = {
   message: string;
 };
 
+export type PaperSection = {
+  title: string;
+  level: number;
+  source_page: number;
+  source: "bookmark" | "heuristic";
+  confidence: "high" | "medium";
+};
+
+export type PaperStructure = {
+  page_count: number;
+  sections: PaperSection[];
+  method: "bookmarks" | "heuristic" | "unavailable";
+  warnings: string[];
+};
+
 export type SearchMode = "keyword" | "semantic" | "hybrid";
 export type ReadingCategory =
   | "unclassified"
@@ -131,6 +146,18 @@ export async function importPaper(file: File): Promise<PaperImportResult> {
 
 export function paperFileUrl(paperId: string): string {
   return `/api/papers/${encodeURIComponent(paperId)}/file`;
+}
+
+export async function getPaperStructure(
+  paperId: string,
+): Promise<PaperStructure> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/structure`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "论文目录加载失败");
+  }
+  return (await response.json()) as PaperStructure;
 }
 
 export async function searchPaper(
