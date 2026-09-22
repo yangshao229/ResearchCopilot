@@ -2,15 +2,20 @@ import { useEffect, useState } from "react";
 
 import {
   answerPaper,
+  createConversationSession,
   downloadPaperCard,
   exportReadingRecordUrl,
+  getPaperReadingGuide,
   getPaperStructure,
+  listConversationSessions,
   listReadingHistory,
   previewPaperCard,
   searchPaper,
+  type ConversationSession,
   type Paper,
   type PaperAnswer,
   type PaperCardPreview,
+  type PaperReadingGuide,
   type PaperStructure,
   type ReadingCategory,
   type ReadingRecord,
@@ -213,7 +218,15 @@ export default function AssistantPanel({
   const [isAnswering, setIsAnswering] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ReadingRecord[]>([]);
+  const [allHistory, setAllHistory] = useState<ReadingRecord[]>([]);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ConversationSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState("default");
+  const [newSessionTitle, setNewSessionTitle] = useState("");
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [isCreatingSession, setIsCreatingSession] = useState(false);
+  const [guide, setGuide] = useState<PaperReadingGuide | null>(null);
+  const [guideError, setGuideError] = useState<string | null>(null);
   const [cardPreview, setCardPreview] = useState<PaperCardPreview | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
   const [isPreparingCard, setIsPreparingCard] = useState(false);
@@ -223,14 +236,84 @@ export default function AssistantPanel({
   const [isLoadingStructure, setIsLoadingStructure] = useState(true);
 
   useEffect(() => {
+    let isCurrent = true;
+    setActiveSessionId("default");
+    setHistory([]);
+    setAllHistory([]);
+    setSessions([]);
+    setGuide(null);
+    setHistoryError(null);
+    setSessionError(null);
+    setGuideError(null);
+
     listReadingHistory(paper.id)
-      .then(setHistory)
+      .then((records) => {
+        if (isCurrent) {
+          setAllHistory(records);
+        }
+      })
       .catch((reason: unknown) => {
-        setHistoryError(
-          reason instanceof Error ? reason.message : "阅读记录加载失败。",
-        );
+        if (isCurrent) {
+          setHistoryError(
+            reason instanceof Error ? reason.message : "阅读记录加载失败。",
+          );
+        }
       });
+    listConversationSessions(paper.id)
+      .then((paperSessions) => {
+        if (isCurrent) {
+          setSessions(paperSessions);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (isCurrent) {
+          setSessionError(
+            reason instanceof Error ? reason.message : "阅读会话加载失败。",
+          );
+        }
+      });
+    getPaperReadingGuide(paper.id)
+      .then((paperGuide) => {
+        if (isCurrent) {
+          setGuide(paperGuide);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (isCurrent) {
+          setGuideError(
+            reason instanceof Error ? reason.message : "论文阅读路线加载失败。",
+          );
+        }
+      });
+
+    return () => {
+      isCurrent = false;
+    };
   }, [paper.id]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setHistoryError(null);
+    setAnswer(null);
+    setResults([]);
+    setCompletedSearch(null);
+    listReadingHistory(paper.id, activeSessionId)
+      .then((records) => {
+        if (isCurrent) {
+          setHistory(records);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (isCurrent) {
+          setHistoryError(
+            reason instanceof Error ? reason.message : "阅读记录加载失败。",
+          );
+        }
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [paper.id, activeSessionId]);
 
   useEffect(() => {
     setIsLoadingStructure(true);
@@ -246,9 +329,12 @@ export default function AssistantPanel({
   }, [paper.id]);
 
   const isBusy = isSearching || isAnswering;
-  const confirmedRecordCount = history.filter(
+  const confirmedRecordCount = allHistory.filter(
     (record) => record.confirmed,
   ).length;
+  const activeSession = sessions.find(
+    (session) => session.id === activeSessionId,
+  );
 
   const useSelection = (instruction: string) => {
     if (!selection) {
@@ -293,6 +379,73 @@ export default function AssistantPanel({
     }
   };
 
+  const createSession = async () => {
+    const title = newSessionTitle.trim();
+    if (!title || isCreatingSession) {
+      return;
+    }
+    setSessionError(null);
+    setIsCreatingSession(true);
+    try {
+      const created = await createConversationSession(paper.id, title);
+      setSessions((current) => [...current, created]);
+      setActiveSessionId(created.id);
+      setNewSessionTitle("");
+    } catch (reason: unknown) {
+      setSessionError(
+        reason instanceof Error ? reason.message : "阅读会话创建失败。",
+      );
+    } finally {
+      setIsCreatingSession(false);
+    }
+  };
+
+  const sessionPanel = (
+    <section className="session-panel" aria-label="当前阅读会话">
+      <div className="session-heading">
+        <div>
+          <strong>当前会话</strong>
+          <small>范围固定为 {paper.name}</small>
+        </div>
+        <select
+          aria-label="选择阅读会话"
+          value={activeSessionId}
+          onChange={(event) => setActiveSessionId(event.target.value)}
+        >
+          {sessions.map((session) => (
+            <option key={session.id} value={session.id}>
+              {session.title}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="session-create">
+        <input
+          type="text"
+          value={newSessionTitle}
+          maxLength={80}
+          placeholder="新会话，例如：方法精读"
+          onChange={(event) => setNewSessionTitle(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              void createSession();
+            }
+          }}
+        />
+        <button
+          type="button"
+          disabled={!newSessionTitle.trim() || isCreatingSession}
+          onClick={() => void createSession()}
+        >
+          {isCreatingSession ? "创建中…" : "新建"}
+        </button>
+      </div>
+      <p>切换会话只切换这篇论文的问答和笔记，不会混入其他论文。</p>
+      {sessionError && <p className="search-error">{sessionError}</p>}
+    </section>
+  );
+
   const runSearch = async () => {
     const query = question.trim();
     if (!query || isBusy) {
@@ -332,12 +485,18 @@ export default function AssistantPanel({
         paper.id,
         query,
         searchMode,
+        activeSessionId,
       );
       setAnswer(paperAnswer);
       setResults(paperAnswer.evidence);
       setCompletedSearch({ query, mode: searchMode });
       setActiveTab("ask");
-      setHistory(await listReadingHistory(paper.id));
+      const [sessionHistory, paperHistory] = await Promise.all([
+        listReadingHistory(paper.id, activeSessionId),
+        listReadingHistory(paper.id),
+      ]);
+      setHistory(sessionHistory);
+      setAllHistory(paperHistory);
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "论文回答生成失败。");
     } finally {
@@ -411,6 +570,37 @@ export default function AssistantPanel({
           <p className="assistant-intro">
             页数、目录和标题等结构问题在本地直接回答；内容问题先检索论文证据，再让 DeepSeek 只根据证据回答并标注页码。
           </p>
+
+          {sessionPanel}
+
+          <section className="reading-guide" aria-label="这篇论文的阅读路线">
+            <div className="reading-guide-heading">
+              <div>
+                <strong>这篇论文的阅读路线</strong>
+                <small>根据真实目录生成，不套用固定问题</small>
+              </div>
+            </div>
+            {guideError ? (
+              <p className="search-error">{guideError}</p>
+            ) : guide && guide.questions.length > 0 ? (
+              <div className="guide-question-list">
+                {guide.questions.map((item) => (
+                  <button
+                    type="button"
+                    key={`${item.role}-${item.source_page}-${item.label}`}
+                    onClick={() => setQuestion(item.question)}
+                  >
+                    <span>{item.label}</span>
+                    <small>第 {item.source_page} 页起 · 点击填入问题</small>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="guide-unavailable">
+                {guide?.warnings[0] ?? "正在根据论文目录准备建议…"}
+              </p>
+            )}
+          </section>
 
           {answer && (
             <section
@@ -633,8 +823,9 @@ export default function AssistantPanel({
           <p className="eyebrow">本地阅读记录</p>
           <h2>人工确认后再进入正式笔记</h2>
           <p className="assistant-intro">
-            AI 回答会自动保存在本机。核对引用、写下自己的理解并确认后，才能导出 Markdown。
+            当前显示“{activeSession?.title ?? "默认阅读"}”的记录。核对引用、写下自己的理解并确认后，才能进入整篇论文的正式卡片。
           </p>
+          {sessionPanel}
           {historyError && <p className="search-error">{historyError}</p>}
           {history.length > 0 ? (
             <div className="history-list">
@@ -647,6 +838,11 @@ export default function AssistantPanel({
                   onSaved={(updatedRecord) => {
                     setCardPreview(null);
                     setHistory((currentHistory) =>
+                      currentHistory.map((item) =>
+                        item.id === updatedRecord.id ? updatedRecord : item,
+                      ),
+                    );
+                    setAllHistory((currentHistory) =>
                       currentHistory.map((item) =>
                         item.id === updatedRecord.id ? updatedRecord : item,
                       ),
@@ -748,7 +944,9 @@ export default function AssistantPanel({
           void runAnswer();
         }}
       >
-        <label htmlFor="question">向当前论文提问</label>
+        <label htmlFor="question">
+          向当前论文提问 · {activeSession?.title ?? "默认阅读"}
+        </label>
         <p className="send-scope">
           结构问题只在本地处理；内容问题发送给 DeepSeek 的只有你的问题和最多 5 段本地证据，不会发送整篇论文。
         </p>

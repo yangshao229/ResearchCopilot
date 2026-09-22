@@ -14,6 +14,10 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 
+from research_copilot.conversation_sessions import (
+    ConversationSession,
+    ConversationSessionStore,
+)
 from research_copilot.paper_answer_service import (
     AnswerGenerationError,
     ModelNotConfiguredError,
@@ -28,6 +32,10 @@ from research_copilot.paper_question_router import (
     answer_structural_question,
     classify_paper_question,
 )
+from research_copilot.paper_reading_guide import (
+    PaperReadingGuide,
+    build_reading_guide,
+)
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.paper_structure import PaperStructure, extract_paper_structure
 from research_copilot.reading_history import (
@@ -41,6 +49,7 @@ DEFAULT_PAPER_DIRECTORY = PROJECT_ROOT / "data" / "raw"
 DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
 DEFAULT_HISTORY_DIRECTORY = PROJECT_ROOT / "artifacts" / "reading_history"
+DEFAULT_SESSION_DIRECTORY = PROJECT_ROOT / "artifacts" / "conversations"
 DEFAULT_CARD_DIRECTORY = PROJECT_ROOT / "artifacts" / "paper_cards"
 MAX_PDF_UPLOAD_BYTES = 100 * 1024 * 1024
 
@@ -62,6 +71,7 @@ class PaperSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
+    session_id: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]+$")
 
     @field_validator("query")
     @classmethod
@@ -90,6 +100,18 @@ class ReadingRecordUpdate(BaseModel):
     confirmed: bool
     personal_note: str = Field(default="", max_length=5000)
     category: ReadingCategory = "unclassified"
+
+
+class ConversationSessionCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=80)
+
+    @field_validator("title")
+    @classmethod
+    def title_must_contain_text(cls, value: str) -> str:
+        cleaned_value = " ".join(value.strip().split())
+        if not cleaned_value:
+            raise ValueError("title must contain text")
+        return cleaned_value
 
 
 class PaperLibrary:
@@ -202,6 +224,7 @@ def create_app(
     search_service: PaperSearchService | None = None,
     answer_service: PaperAnswerService | None = None,
     history_store: ReadingHistoryStore | None = None,
+    session_store: ConversationSessionStore | None = None,
     card_compiler: PaperCardCompiler | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
@@ -211,6 +234,12 @@ def create_app(
     )
     answerer = answer_service or PaperAnswerService(searcher)
     history = history_store or ReadingHistoryStore(DEFAULT_HISTORY_DIRECTORY)
+    session_directory = (
+        history.root_directory.parent / "conversations"
+        if history_store is not None
+        else DEFAULT_SESSION_DIRECTORY
+    )
+    sessions = session_store or ConversationSessionStore(session_directory)
     cards = card_compiler or PaperCardCompiler(DEFAULT_CARD_DIRECTORY)
 
     app = FastAPI(
@@ -283,6 +312,49 @@ def create_app(
                 detail="无法解析这篇 PDF 的目录结构。",
             ) from error
 
+    @app.get(
+        "/api/papers/{paper_id}/guide",
+        response_model=PaperReadingGuide,
+    )
+    def get_paper_guide(paper_id: str) -> PaperReadingGuide:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+            return build_reading_guide(extract_paper_structure(paper_path))
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except Exception as error:
+            raise HTTPException(
+                status_code=422,
+                detail="无法为这篇 PDF 生成阅读路线。",
+            ) from error
+
+    @app.get(
+        "/api/papers/{paper_id}/sessions",
+        response_model=list[ConversationSession],
+    )
+    def list_conversation_sessions(paper_id: str) -> list[ConversationSession]:
+        try:
+            library.get_paper_path(paper_id)
+            return sessions.list_sessions(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+
+    @app.post(
+        "/api/papers/{paper_id}/sessions",
+        response_model=ConversationSession,
+    )
+    def create_conversation_session(
+        paper_id: str,
+        request: ConversationSessionCreate,
+    ) -> ConversationSession:
+        try:
+            library.get_paper_path(paper_id)
+            return sessions.create_session(paper_id, request.title)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
     @app.post(
         "/api/papers/{paper_id}/search",
         response_model=list[PaperSearchResult],
@@ -324,6 +396,11 @@ def create_app(
             ) from error
 
         try:
+            if not sessions.contains(paper_id, request.session_id):
+                raise HTTPException(
+                    status_code=404,
+                    detail="Conversation session not found for this paper.",
+                )
             answer = None
             if classify_paper_question(request.query) != "content":
                 answer = answer_structural_question(
@@ -344,6 +421,7 @@ def create_app(
                 request.query,
                 request.mode,
                 answer,
+                session_id=request.session_id,
             )
             return answer.model_copy(update={"history_id": record.id})
         except ModelNotConfiguredError as error:
@@ -364,12 +442,20 @@ def create_app(
         "/api/papers/{paper_id}/history",
         response_model=list[ReadingRecord],
     )
-    def list_reading_history(paper_id: str) -> list[ReadingRecord]:
+    def list_reading_history(
+        paper_id: str,
+        session_id: str | None = None,
+    ) -> list[ReadingRecord]:
         try:
             library.get_paper_path(paper_id)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Paper not found.") from error
-        return history.list_records(paper_id)
+        if session_id is not None and not sessions.contains(paper_id, session_id):
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation session not found for this paper.",
+            )
+        return history.list_records(paper_id, session_id=session_id)
 
     @app.patch(
         "/api/papers/{paper_id}/history/{record_id}",

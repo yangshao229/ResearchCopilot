@@ -453,6 +453,141 @@ button:disabled {
   line-height: 1.65;
 }
 
+.session-panel,
+.reading-guide {
+  margin: 16px 0;
+  border: 1px solid #cbd5cc;
+  border-radius: 12px;
+  padding: 12px;
+  background: #f7f9f6;
+}
+
+.session-heading,
+.reading-guide-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.session-heading > div,
+.reading-guide-heading > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.session-heading strong,
+.reading-guide-heading strong {
+  color: #35513f;
+  font-size: 12px;
+}
+
+.session-heading small,
+.reading-guide-heading small {
+  color: #77817a;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.session-heading select {
+  min-width: 105px;
+  max-width: 46%;
+  height: 32px;
+  border: 1px solid #b9c6bc;
+  border-radius: 7px;
+  padding: 0 7px;
+  color: #34483b;
+  background: #fff;
+  font-size: 10px;
+}
+
+.session-create {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+}
+
+.session-create input {
+  min-width: 0;
+  border: 1px solid #c5cec6;
+  border-radius: 7px;
+  padding: 8px 9px;
+  color: #2f3b33;
+  background: #fff;
+  font-size: 10px;
+}
+
+.session-create button {
+  border: 0;
+  border-radius: 7px;
+  padding: 0 12px;
+  color: #fff;
+  background: #496b55;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.session-create button:disabled {
+  opacity: 0.5;
+}
+
+.session-panel > p {
+  margin: 8px 0 0;
+  color: #748078;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.session-panel > p.search-error {
+  color: #983c35;
+  background: #fae9e7;
+}
+
+.guide-question-list {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guide-question-list button {
+  width: 100%;
+  border: 1px solid #d3dad4;
+  border-radius: 8px;
+  padding: 8px 9px;
+  color: #34483a;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+}
+
+.guide-question-list button:hover {
+  border-color: #7e9986;
+  background: #eef5ef;
+}
+
+.guide-question-list span {
+  font-size: 10px;
+  font-weight: 750;
+  line-height: 1.4;
+}
+
+.guide-question-list small,
+.guide-unavailable {
+  color: #79837c;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.guide-unavailable {
+  margin: 10px 0 0;
+}
+
 .outline-status {
   margin: 16px 0 10px;
   border: 1px solid #cbd6cd;

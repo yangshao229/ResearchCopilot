@@ -30,6 +30,7 @@ class ReadingRecord(BaseModel):
     paper_name: str
     created_at: str
     question: str
+    session_id: str = "default"
     search_mode: SearchMode
     answer: str
     explanation: str
@@ -48,14 +49,21 @@ class ReadingHistoryStore:
         self.root_directory = root_directory.resolve()
         self.export_directory = self.root_directory / "exports"
 
-    def list_records(self, paper_id: str) -> list[ReadingRecord]:
+    def list_records(
+        self,
+        paper_id: str,
+        session_id: str | None = None,
+    ) -> list[ReadingRecord]:
         path = self._history_path(paper_id)
         if not path.exists():
             return []
 
         with path.open("r", encoding="utf-8") as history_file:
             raw_records = json.load(history_file)
-        return [ReadingRecord.model_validate(record) for record in raw_records]
+        records = [ReadingRecord.model_validate(record) for record in raw_records]
+        if session_id is None:
+            return records
+        return [record for record in records if record.session_id == session_id]
 
     def add_record(
         self,
@@ -64,6 +72,7 @@ class ReadingHistoryStore:
         question: str,
         search_mode: SearchMode,
         answer: PaperAnswer,
+        session_id: str = "default",
     ) -> ReadingRecord:
         record = ReadingRecord(
             id=uuid4().hex,
@@ -71,6 +80,7 @@ class ReadingHistoryStore:
             paper_name=paper_name,
             created_at=datetime.now(UTC).isoformat(),
             question=question,
+            session_id=session_id,
             search_mode=search_mode,
             answer=answer.answer,
             explanation=answer.explanation,

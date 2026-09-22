@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
+from research_copilot.conversation_sessions import ConversationSessionStore
 from research_copilot.page_store import save_page_data
 from research_copilot.paper_answer_service import (
     AnswerCitation,
@@ -174,6 +175,58 @@ def test_paper_api_exposes_clickable_pdf_structure(tmp_path: Path) -> None:
         "source": "bookmark",
         "confidence": "high",
     }
+
+
+def test_paper_api_builds_reading_guide_from_real_outline(tmp_path: Path) -> None:
+    paper_path = tmp_path / "attention.pdf"
+    create_bookmarked_test_pdf(paper_path)
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path,
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+
+    response = client.get(f"/api/papers/{paper_id}/guide")
+
+    assert response.status_code == 200
+    guide = response.json()
+    assert guide["method"] == "structure:bookmarks"
+    assert any("1 Introduction" in item["label"] for item in guide["questions"])
+    assert any("2 Method" in item["label"] for item in guide["questions"])
+
+
+def test_paper_api_creates_isolated_conversation_sessions(tmp_path: Path) -> None:
+    create_test_pdf(tmp_path / "first.pdf")
+    create_test_pdf(tmp_path / "second.pdf", page_count=3)
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path,
+            frontend_directory=tmp_path / "missing-frontend",
+            session_store=ConversationSessionStore(tmp_path / "sessions"),
+        )
+    )
+    papers = client.get("/api/papers").json()
+    first_id = next(paper["id"] for paper in papers if paper["name"] == "first.pdf")
+    second_id = next(paper["id"] for paper in papers if paper["name"] == "second.pdf")
+
+    created_response = client.post(
+        f"/api/papers/{first_id}/sessions",
+        json={"title": "方法精读"},
+    )
+
+    assert created_response.status_code == 200
+    created = created_response.json()
+    assert created["paper_id"] == first_id
+    assert created["title"] == "方法精读"
+    first_sessions = client.get(f"/api/papers/{first_id}/sessions").json()
+    second_sessions = client.get(f"/api/papers/{second_id}/sessions").json()
+    assert [session["title"] for session in first_sessions] == [
+        "默认阅读",
+        "方法精读",
+    ]
+    assert [session["title"] for session in second_sessions] == ["默认阅读"]
 
 
 def test_paper_api_rejects_unknown_id(tmp_path: Path) -> None:
@@ -433,6 +486,82 @@ def test_paper_api_generates_answer_with_verified_page_citation(
     assert export_response.status_code == 200
     assert "review_status: confirmed" in export_response.text
     assert "我确认了第 2 页原文" in export_response.text
+
+
+def test_paper_answer_and_history_stay_inside_selected_session(
+    tmp_path: Path,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    processed_directory = tmp_path / "processed"
+    paper_directory.mkdir()
+    first_path = paper_directory / "first.pdf"
+    second_path = paper_directory / "second.pdf"
+    create_test_pdf(first_path)
+    create_test_pdf(second_path, page_count=3)
+    search_service = PaperSearchService(processed_directory)
+    history_store = ReadingHistoryStore(tmp_path / "history")
+    session_store = ConversationSessionStore(tmp_path / "sessions")
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+            search_service=search_service,
+            answer_service=PaperAnswerService(
+                search_service,
+                AnswerApiFakeModel(),
+            ),
+            history_store=history_store,
+            session_store=session_store,
+        )
+    )
+    papers = client.get("/api/papers").json()
+    first_id = next(paper["id"] for paper in papers if paper["name"] == "first.pdf")
+    second_id = next(paper["id"] for paper in papers if paper["name"] == "second.pdf")
+    processed_directory.mkdir()
+    for paper_id, paper_name in ((first_id, "first.pdf"), (second_id, "second.pdf")):
+        save_page_data(
+            {
+                "source_pdf": paper_name,
+                "pages": [{"source_page": 1, "text": "Transformer evidence."}],
+            },
+            processed_directory / f"{paper_id}.json",
+        )
+    method_session = client.post(
+        f"/api/papers/{first_id}/sessions",
+        json={"title": "方法精读"},
+    ).json()
+
+    response = client.post(
+        f"/api/papers/{first_id}/answer",
+        json={
+            "query": "Transformer",
+            "mode": "keyword",
+            "session_id": method_session["id"],
+        },
+    )
+
+    assert response.status_code == 200
+    method_history = client.get(
+        f"/api/papers/{first_id}/history",
+        params={"session_id": method_session["id"]},
+    ).json()
+    default_history = client.get(
+        f"/api/papers/{first_id}/history",
+        params={"session_id": "default"},
+    ).json()
+    assert len(method_history) == 1
+    assert method_history[0]["session_id"] == method_session["id"]
+    assert default_history == []
+
+    forged_response = client.post(
+        f"/api/papers/{second_id}/answer",
+        json={
+            "query": "Transformer",
+            "mode": "keyword",
+            "session_id": method_session["id"],
+        },
+    )
+    assert forged_response.status_code == 404
 
 
 def test_paper_answer_api_explains_missing_deepseek_key(

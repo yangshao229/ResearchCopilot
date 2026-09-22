@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -100,3 +101,56 @@ def test_record_requires_user_note_and_category_before_confirmation(
             personal_note="My own understanding.",
             category="unclassified",
         )
+
+
+def test_reading_history_filters_records_by_session(tmp_path: Path) -> None:
+    store = ReadingHistoryStore(tmp_path)
+    answer = sample_answer()
+    store.add_record(
+        "paper-id",
+        "paper.pdf",
+        "Understand the method",
+        "hybrid",
+        answer,
+        session_id="method-session",
+    )
+    store.add_record(
+        "paper-id",
+        "paper.pdf",
+        "Check the experiments",
+        "hybrid",
+        answer,
+        session_id="experiment-session",
+    )
+
+    method_records = store.list_records("paper-id", "method-session")
+
+    assert [record.question for record in method_records] == [
+        "Understand the method"
+    ]
+    assert len(store.list_records("paper-id")) == 2
+
+
+def test_legacy_record_without_session_is_loaded_into_default_session(
+    tmp_path: Path,
+) -> None:
+    store = ReadingHistoryStore(tmp_path)
+    created = store.add_record(
+        "paper-id",
+        "paper.pdf",
+        "Legacy question",
+        "hybrid",
+        sample_answer(),
+    )
+    history_path = tmp_path / "paper-id.json"
+    raw_records = json.loads(history_path.read_text(encoding="utf-8"))
+    raw_records[0].pop("session_id")
+    history_path.write_text(
+        json.dumps(raw_records, ensure_ascii=False),
+        encoding="utf-8",
+    )
+
+    reloaded = store.list_records("paper-id", session_id="default")
+
+    assert reloaded[0].id == created.id
+    assert reloaded[0].session_id == "default"

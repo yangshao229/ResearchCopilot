@@ -26,6 +26,26 @@ export type PaperStructure = {
   warnings: string[];
 };
 
+export type ConversationSession = {
+  id: string;
+  paper_id: string;
+  title: string;
+  created_at: string;
+};
+
+export type ReadingQuestion = {
+  role: "overview" | "method" | "experiments" | "critique";
+  label: string;
+  question: string;
+  source_page: number;
+};
+
+export type PaperReadingGuide = {
+  questions: ReadingQuestion[];
+  method: string;
+  warnings: string[];
+};
+
 export type SearchMode = "keyword" | "semantic" | "hybrid";
 export type ReadingCategory =
   | "unclassified"
@@ -79,6 +99,7 @@ export type ReadingRecord = {
   paper_name: string;
   created_at: string;
   question: string;
+  session_id: string;
   search_mode: SearchMode;
   answer: string;
   explanation: string;
@@ -160,6 +181,48 @@ export async function getPaperStructure(
   return (await response.json()) as PaperStructure;
 }
 
+export async function getPaperReadingGuide(
+  paperId: string,
+): Promise<PaperReadingGuide> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/guide`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "论文阅读路线加载失败");
+  }
+  return (await response.json()) as PaperReadingGuide;
+}
+
+export async function listConversationSessions(
+  paperId: string,
+): Promise<ConversationSession[]> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/sessions`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "阅读会话加载失败");
+  }
+  return (await response.json()) as ConversationSession[];
+}
+
+export async function createConversationSession(
+  paperId: string,
+  title: string,
+): Promise<ConversationSession> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/sessions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(response, "阅读会话创建失败");
+  }
+  return (await response.json()) as ConversationSession;
+}
+
 export async function searchPaper(
   paperId: string,
   query: string,
@@ -188,6 +251,7 @@ export async function answerPaper(
   paperId: string,
   query: string,
   mode: SearchMode,
+  sessionId = "default",
   limit = 5,
 ): Promise<PaperAnswer> {
   const response = await fetch(
@@ -197,7 +261,7 @@ export async function answerPaper(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, mode, limit }),
+      body: JSON.stringify({ query, mode, limit, session_id: sessionId }),
     },
   );
 
@@ -210,9 +274,13 @@ export async function answerPaper(
 
 export async function listReadingHistory(
   paperId: string,
+  sessionId?: string,
 ): Promise<ReadingRecord[]> {
+  const query = sessionId
+    ? `?session_id=${encodeURIComponent(sessionId)}`
+    : "";
   const response = await fetch(
-    `/api/papers/${encodeURIComponent(paperId)}/history`,
+    `/api/papers/${encodeURIComponent(paperId)}/history${query}`,
   );
   if (!response.ok) {
     throw await responseError(response, "阅读记录加载失败");

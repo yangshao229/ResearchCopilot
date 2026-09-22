@@ -258,3 +258,20 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 书签树、递归遍历、Pydantic 结构模型、启发式规则与置信度、确定性问题路由、为什么全文统计不能依靠 Top-k RAG、React 异步加载、目录层级渲染、程序跳页与滚动事件竞争、真实页面验收为何能发现自动测试遗漏的问题。
 
 验证结果：真实 `sample.pdf` 从自带书签读取 22 个标题；目录可点击跳页；结构问题本地回答且不调用 API；段落统计无法可靠完成时安全拒绝；后端 `55 passed`，前端构建通过。详细过程见 [M6.2 验收](M6_2_VALIDATION.md)。本阶段设计依据见 [论文结构与问题路由拆解](research/2026-09-21-paper-structure-and-question-routing.md)。
+
+## M6.3：论文专属阅读路线与独立会话
+
+新增文件：
+
+- `src/research_copilot/conversation_sessions.py`
+- `src/research_copilot/paper_reading_guide.py`
+- `tests/test_conversation_sessions.py`
+- `tests/test_paper_reading_guide.py`
+- `docs/research/2026-09-22-paper-reading-guides-and-sessions.md`
+- `docs/M6_3_VALIDATION.md`
+
+重要修改：`reading_history.py`、`web_app.py`、`test_reading_history.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`styles.css`、`App.tsx`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`
+
+以后学习：数据模型为什么需要稳定 ID、按论文分文件保存、原子写入、Pydantic 默认值如何兼容旧 JSON、前后端双重范围校验、React 多个异步请求如何独立失败、会话筛选与整篇论文汇总的区别、如何从目录角色生成可解释问题、为什么点击建议不能自动调用模型。
+
+验证结果：`sample.pdf` 根据真实标题生成专属阅读问题；点击建议只填入问题；新建“方法精读”后记录为空，切回“默认阅读”恢复原有 4 条记录；跨论文会话 ID 被后端拒绝；刷新时的并发首次读取安全；完整测试 `66 passed`，前端构建和真实页面检查通过。详细过程见 [M6.3 验收](M6_3_VALIDATION.md)。本阶段设计依据见 [论文专属阅读路线与独立会话拆解](research/2026-09-22-paper-reading-guides-and-sessions.md)。

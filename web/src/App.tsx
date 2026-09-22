@@ -127,7 +127,7 @@ export default function App() {
           >
             {assistantOpen ? "收起助手" : "打开助手"}
           </button>
-          <div className="milestone-badge">第一版 · 阅读闭环</div>
+          <div className="milestone-badge">M6.3 · 专属阅读路线</div>
         </div>
       </header>
 
