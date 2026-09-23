@@ -275,3 +275,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：数据模型为什么需要稳定 ID、按论文分文件保存、原子写入、Pydantic 默认值如何兼容旧 JSON、前后端双重范围校验、React 多个异步请求如何独立失败、会话筛选与整篇论文汇总的区别、如何从目录角色生成可解释问题、为什么点击建议不能自动调用模型。
 
 验证结果：`sample.pdf` 根据真实标题生成专属阅读问题；点击建议只填入问题；新建“方法精读”后记录为空，切回“默认阅读”恢复原有 4 条记录；跨论文会话 ID 被后端拒绝；刷新时的并发首次读取安全；完整测试 `66 passed`，前端构建和真实页面检查通过。详细过程见 [M6.3 验收](M6_3_VALIDATION.md)。本阶段设计依据见 [论文专属阅读路线与独立会话拆解](research/2026-09-22-paper-reading-guides-and-sessions.md)。
+
+## 架构校准：统一阅读模型与双语基础层设计
+
+新增文件：
+
+- `docs/research/2026-09-23-coherent-reading-architecture-and-bilingual-workflow.md`
+
+重要修改：`docs/PRODUCT_BLUEPRINT.md`、`docs/OPEN_SOURCE_RESEARCH_PROTOCOL.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`
+
+以后学习：功能清单与领域模型的区别、如何从完整用户旅程设计模块边界、领域对象、统一阅读上下文、横切关注点、语言状态分层、原文锚点、翻译缓存、术语表、许可证约束，以及为什么翻译、解释和问答应复用同一条处理管线。
+
+阶段结论：此前蓝图虽然列出了划词翻译和多语种检索，却没有把语言建模为贯穿导入、阅读、证据、问答、记录和导出的基础能力。本次将产品收敛为八类核心对象，并新增架构影响与兼容性检查门槛。下一步先在 M6.4 落地统一 `ReadingContext`，再在 M6.5 实现双语阅读基础层，而不是直接增加孤立的语言按钮。设计依据见 [整体阅读架构与双语工作流拆解](research/2026-09-23-coherent-reading-architecture-and-bilingual-workflow.md)。
