@@ -1,6 +1,6 @@
 from pathlib import Path
-from typing import Literal
 
+from research_copilot.domain import SearchHit, SearchMode
 from research_copilot.paper_search import (
     hybrid_search_page_data,
     search_page_data,
@@ -12,8 +12,9 @@ from research_copilot.semantic_retriever import (
     EmbeddingModel,
 )
 
-SearchMode = Literal["keyword", "semantic", "hybrid"]
-SearchResult = dict[str, int | float | str]
+# Backward-compatible name for older imports while the codebase moves to the
+# shared domain model.
+SearchResult = SearchHit
 
 
 class PaperSearchService:
@@ -32,7 +33,7 @@ class PaperSearchService:
         query: str,
         mode: SearchMode,
         limit: int = 5,
-    ) -> list[SearchResult]:
+    ) -> list[SearchHit]:
         page_data_path = self._ensure_page_data(pdf_path, paper_id)
 
         if mode == "keyword":
@@ -56,9 +57,9 @@ class PaperSearchService:
                 embedding_model=self._get_embedding_model(),
             )
 
-        normalized_results: list[SearchResult] = []
+        normalized_results: list[SearchHit] = []
         for result in raw_results:
-            normalized_result: SearchResult = {
+            normalized_result: dict[str, int | float | str] = {
                 "source_page": int(result["source_page"]),
                 "chunk_index": int(result["chunk_index"]),
                 "text": str(result["text"]),
@@ -78,7 +79,7 @@ class PaperSearchService:
                     normalized_result[field] = (
                         int(value) if field.endswith("_rank") else float(value)
                     )
-            normalized_results.append(normalized_result)
+            normalized_results.append(SearchHit.model_validate(normalized_result))
 
         return normalized_results
 

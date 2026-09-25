@@ -6,13 +6,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from research_copilot.paper_card import write_paper_card
+from research_copilot.paper_library import DEFAULT_PAPER_DIRECTORY, PROJECT_ROOT
 from research_copilot.paper_search import (
     search_page_data,
     semantic_search_page_data,
 )
 from research_copilot.pdf_importer import import_pdf_to_json
 from research_copilot.semantic_retriever import DEFAULT_EMBEDDING_MODEL
-from research_copilot.web_app import DEFAULT_PAPER_DIRECTORY, PROJECT_ROOT
 
 
 def build_parser() -> argparse.ArgumentParser:

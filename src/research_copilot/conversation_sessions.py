@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-import json
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from threading import RLock
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from research_copilot.storage import (
+    atomic_write_json,
+    read_json,
+    validated_json_path,
+)
 
 DEFAULT_SESSION_ID = "default"
 DEFAULT_SESSION_TITLE = "默认阅读"
@@ -30,13 +34,12 @@ class ConversationSessionStore:
     def list_sessions(self, paper_id: str) -> list[ConversationSession]:
         with self._lock:
             path = self._session_path(paper_id)
-            if not path.exists():
+            raw_sessions = read_json(path, None)
+            if raw_sessions is None:
                 default_session = self._default_session(paper_id)
                 self._write_sessions(paper_id, [default_session])
                 return [default_session]
 
-            with path.open("r", encoding="utf-8") as session_file:
-                raw_sessions = json.load(session_file)
             sessions = [
                 ConversationSession.model_validate(session)
                 for session in raw_sessions
@@ -86,25 +89,14 @@ class ConversationSessionStore:
         )
 
     def _session_path(self, paper_id: str) -> Path:
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", paper_id):
-            raise ValueError("Invalid paper id.")
-        return self.root_directory / f"{paper_id}.json"
+        return validated_json_path(self.root_directory, paper_id)
 
     def _write_sessions(
         self,
         paper_id: str,
         sessions: list[ConversationSession],
     ) -> None:
-        self.root_directory.mkdir(parents=True, exist_ok=True)
-        path = self._session_path(paper_id)
-        temporary_path = path.with_name(f".{path.name}.{uuid4().hex}.tmp")
-        temporary_path.write_text(
-            json.dumps(
-                [session.model_dump(mode="json") for session in sessions],
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
+        atomic_write_json(
+            self._session_path(paper_id),
+            [session.model_dump(mode="json") for session in sessions],
         )
-        temporary_path.replace(path)

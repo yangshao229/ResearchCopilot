@@ -1,4 +1,5 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -154,3 +155,26 @@ def test_legacy_record_without_session_is_loaded_into_default_session(
 
     assert reloaded[0].id == created.id
     assert reloaded[0].session_id == "default"
+
+
+def test_concurrent_writes_do_not_drop_reading_records(tmp_path: Path) -> None:
+    store = ReadingHistoryStore(tmp_path)
+
+    def add_record(index: int) -> None:
+        store.add_record(
+            "paper-id",
+            "paper.pdf",
+            f"Question {index}",
+            "hybrid",
+            sample_answer(),
+        )
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(add_record, range(12)))
+
+    records = store.list_records("paper-id")
+
+    assert len(records) == 12
+    assert {record.question for record in records} == {
+        f"Question {index}" for index in range(12)
+    }

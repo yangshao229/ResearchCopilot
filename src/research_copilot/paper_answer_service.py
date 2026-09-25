@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Mapping, Protocol
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, ValidationError
 
-from research_copilot.paper_search_service import (
+from research_copilot.domain import (
+    AnswerCitation,
+    Evidence,
+    PaperAnswer,
+    SearchHit,
     SearchMode,
-    SearchResult,
 )
 
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -23,23 +26,6 @@ class AnswerGenerationError(RuntimeError):
     pass
 
 
-class Evidence(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    evidence_id: int = Field(ge=1)
-    source_page: int = Field(ge=1)
-    chunk_index: int = Field(ge=0)
-    text: str
-    score: float
-    keyword_rank: int = 0
-    keyword_score: float = 0.0
-    semantic_rank: int = 0
-    semantic_score: float = 0.0
-    fusion_score: float = 0.0
-    reference_penalty: float = 0.0
-    rerank_score: float = 0.0
-
-
 class ModelAnswerDraft(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -48,24 +34,6 @@ class ModelAnswerDraft(BaseModel):
     cited_evidence_ids: list[int]
     insufficient_evidence: bool
     uncertainty: str
-
-
-class AnswerCitation(BaseModel):
-    evidence_id: int
-    source_page: int
-    quote: str
-
-
-class PaperAnswer(BaseModel):
-    answer: str
-    explanation: str
-    citations: list[AnswerCitation]
-    insufficient_evidence: bool
-    uncertainty: str
-    evidence: list[Evidence]
-    provider: str
-    model: str
-    history_id: str | None = None
 
 
 class AnswerModel(Protocol):
@@ -87,7 +55,7 @@ class SearchService(Protocol):
         query: str,
         mode: SearchMode,
         limit: int = 5,
-    ) -> list[SearchResult]: ...
+    ) -> list[SearchHit | Mapping[str, object]]: ...
 
 
 class DeepSeekAnswerModel:
@@ -257,23 +225,19 @@ class PaperAnswerService:
             mode,
             limit=limit,
         )
-        evidence = [
-            Evidence(
-                evidence_id=index,
-                source_page=int(item["source_page"]),
-                chunk_index=int(item["chunk_index"]),
-                text=str(item["text"]),
-                score=float(item["score"]),
-                keyword_rank=int(item.get("keyword_rank", 0)),
-                keyword_score=float(item.get("keyword_score", 0.0)),
-                semantic_rank=int(item.get("semantic_rank", 0)),
-                semantic_score=float(item.get("semantic_score", 0.0)),
-                fusion_score=float(item.get("fusion_score", 0.0)),
-                reference_penalty=float(item.get("reference_penalty", 0.0)),
-                rerank_score=float(item.get("rerank_score", 0.0)),
+        evidence: list[Evidence] = []
+        for index, item in enumerate(raw_evidence, start=1):
+            hit = (
+                item
+                if isinstance(item, SearchHit)
+                else SearchHit.model_validate(item)
             )
-            for index, item in enumerate(raw_evidence, start=1)
-        ]
+            evidence.append(
+                Evidence(
+                    evidence_id=index,
+                    **hit.model_dump(),
+                )
+            )
 
         if not evidence:
             return PaperAnswer(

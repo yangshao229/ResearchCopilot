@@ -1,10 +1,11 @@
 import json
 from pathlib import Path
 
+from research_copilot.storage import atomic_write_json
+
 
 def save_page_data(page_data: dict[str, object], output_path: Path) -> None:
-    with output_path.open("w", encoding="utf-8") as output_file:
-        json.dump(page_data, output_file, ensure_ascii=False, indent=2)
+    atomic_write_json(output_path, page_data)
 
 
 def load_page_data(input_path: Path) -> dict[str, object]:

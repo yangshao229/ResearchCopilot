@@ -4,66 +4,43 @@ import json
 import re
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from threading import RLock
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
-
-from research_copilot.paper_answer_service import AnswerCitation, PaperAnswer
-from research_copilot.paper_search_service import SearchMode
-
-ReadingCategory = Literal[
-    "unclassified",
-    "summary",
-    "research_problem",
-    "method",
-    "experiments",
-    "contributions",
-    "limitations",
-    "open_questions",
-]
-
-
-class ReadingRecord(BaseModel):
-    id: str
-    paper_id: str
-    paper_name: str
-    created_at: str
-    question: str
-    session_id: str = "default"
-    search_mode: SearchMode
-    answer: str
-    explanation: str
-    citations: list[AnswerCitation]
-    insufficient_evidence: bool
-    uncertainty: str
-    provider: str
-    model: str
-    confirmed: bool = False
-    personal_note: str = ""
-    category: ReadingCategory = "unclassified"
+from research_copilot.domain import (
+    PaperAnswer,
+    ReadingCategory,
+    ReadingRecord,
+    SearchMode,
+)
+from research_copilot.storage import (
+    atomic_write_json,
+    read_json,
+    validated_json_path,
+)
 
 
 class ReadingHistoryStore:
     def __init__(self, root_directory: Path) -> None:
         self.root_directory = root_directory.resolve()
         self.export_directory = self.root_directory / "exports"
+        self._lock = RLock()
 
     def list_records(
         self,
         paper_id: str,
         session_id: str | None = None,
     ) -> list[ReadingRecord]:
-        path = self._history_path(paper_id)
-        if not path.exists():
-            return []
-
-        with path.open("r", encoding="utf-8") as history_file:
-            raw_records = json.load(history_file)
-        records = [ReadingRecord.model_validate(record) for record in raw_records]
-        if session_id is None:
-            return records
-        return [record for record in records if record.session_id == session_id]
+        with self._lock:
+            raw_records = read_json(self._history_path(paper_id), [])
+            records = [
+                ReadingRecord.model_validate(record) for record in raw_records
+            ]
+            if session_id is None:
+                return records
+            return [
+                record for record in records if record.session_id == session_id
+            ]
 
     def add_record(
         self,
@@ -74,26 +51,27 @@ class ReadingHistoryStore:
         answer: PaperAnswer,
         session_id: str = "default",
     ) -> ReadingRecord:
-        record = ReadingRecord(
-            id=uuid4().hex,
-            paper_id=paper_id,
-            paper_name=paper_name,
-            created_at=datetime.now(UTC).isoformat(),
-            question=question,
-            session_id=session_id,
-            search_mode=search_mode,
-            answer=answer.answer,
-            explanation=answer.explanation,
-            citations=answer.citations,
-            insufficient_evidence=answer.insufficient_evidence,
-            uncertainty=answer.uncertainty,
-            provider=answer.provider,
-            model=answer.model,
-        )
-        records = self.list_records(paper_id)
-        records.insert(0, record)
-        self._write_records(paper_id, records)
-        return record
+        with self._lock:
+            record = ReadingRecord(
+                id=uuid4().hex,
+                paper_id=paper_id,
+                paper_name=paper_name,
+                created_at=datetime.now(UTC).isoformat(),
+                question=question,
+                session_id=session_id,
+                search_mode=search_mode,
+                answer=answer.answer,
+                explanation=answer.explanation,
+                citations=answer.citations,
+                insufficient_evidence=answer.insufficient_evidence,
+                uncertainty=answer.uncertainty,
+                provider=answer.provider,
+                model=answer.model,
+            )
+            records = self.list_records(paper_id)
+            records.insert(0, record)
+            self._write_records(paper_id, records)
+            return record
 
     def update_record(
         self,
@@ -103,31 +81,32 @@ class ReadingHistoryStore:
         personal_note: str,
         category: ReadingCategory = "unclassified",
     ) -> ReadingRecord:
-        cleaned_note = personal_note.strip()
-        if confirmed and not cleaned_note:
-            raise ValueError(
-                "加入论文卡片前，请先写下核对原文后的个人理解。"
-            )
-        if confirmed and category == "unclassified":
-            raise ValueError("加入论文卡片前，请先选择记录所属栏目。")
+        with self._lock:
+            cleaned_note = personal_note.strip()
+            if confirmed and not cleaned_note:
+                raise ValueError(
+                    "加入论文卡片前，请先写下核对原文后的个人理解。"
+                )
+            if confirmed and category == "unclassified":
+                raise ValueError("加入论文卡片前，请先选择记录所属栏目。")
 
-        records = self.list_records(paper_id)
-        for index, record in enumerate(records):
-            if record.id != record_id:
-                continue
+            records = self.list_records(paper_id)
+            for index, record in enumerate(records):
+                if record.id != record_id:
+                    continue
 
-            updated_record = record.model_copy(
-                update={
-                    "confirmed": confirmed,
-                    "personal_note": cleaned_note,
-                    "category": category,
-                }
-            )
-            records[index] = updated_record
-            self._write_records(paper_id, records)
-            return updated_record
+                updated_record = record.model_copy(
+                    update={
+                        "confirmed": confirmed,
+                        "personal_note": cleaned_note,
+                        "category": category,
+                    }
+                )
+                records[index] = updated_record
+                self._write_records(paper_id, records)
+                return updated_record
 
-        raise KeyError(record_id)
+            raise KeyError(record_id)
 
     def export_record(self, paper_id: str, record_id: str) -> Path:
         record = self._get_record(paper_id, record_id)
@@ -147,28 +126,17 @@ class ReadingHistoryStore:
         raise KeyError(record_id)
 
     def _history_path(self, paper_id: str) -> Path:
-        if not re.fullmatch(r"[A-Za-z0-9_-]+", paper_id):
-            raise ValueError("Invalid paper id.")
-        return self.root_directory / f"{paper_id}.json"
+        return validated_json_path(self.root_directory, paper_id)
 
     def _write_records(
         self,
         paper_id: str,
         records: list[ReadingRecord],
     ) -> None:
-        self.root_directory.mkdir(parents=True, exist_ok=True)
-        path = self._history_path(paper_id)
-        temporary_path = path.with_suffix(".json.tmp")
-        temporary_path.write_text(
-            json.dumps(
-                [record.model_dump(mode="json") for record in records],
-                ensure_ascii=False,
-                indent=2,
-            )
-            + "\n",
-            encoding="utf-8",
+        atomic_write_json(
+            self._history_path(paper_id),
+            [record.model_dump(mode="json") for record in records],
         )
-        temporary_path.replace(path)
 
     @staticmethod
     def _build_markdown(record: ReadingRecord) -> str:

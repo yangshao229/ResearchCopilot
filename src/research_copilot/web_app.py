@@ -1,75 +1,57 @@
 from __future__ import annotations
 
-import hashlib
-from io import BytesIO
 from pathlib import Path
-from typing import Literal
 from urllib.parse import unquote
-from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
-from pypdf import PdfReader
 
 from research_copilot.conversation_sessions import (
     ConversationSession,
     ConversationSessionStore,
 )
+from research_copilot.document_service import PaperDocumentService
+from research_copilot.domain import (
+    PaperAnswer,
+    ReadingCategory,
+    ReadingContext,
+    ReadingRecord,
+    SearchHit,
+    SearchMode,
+)
 from research_copilot.paper_answer_service import (
     AnswerGenerationError,
     ModelNotConfiguredError,
-    PaperAnswer,
     PaperAnswerService,
 )
 from research_copilot.paper_card_compiler import (
     PaperCardCompiler,
     PaperCardPreview,
 )
-from research_copilot.paper_question_router import (
-    answer_structural_question,
-    classify_paper_question,
+from research_copilot.paper_library import (
+    DEFAULT_PAPER_DIRECTORY,
+    PROJECT_ROOT,
+    PaperImportResult,
+    PaperLibrary,
+    PaperSummary,
 )
-from research_copilot.paper_reading_guide import (
-    PaperReadingGuide,
-    build_reading_guide,
-)
+from research_copilot.paper_reading_guide import PaperReadingGuide
 from research_copilot.paper_search_service import PaperSearchService
-from research_copilot.paper_structure import PaperStructure, extract_paper_structure
-from research_copilot.reading_history import (
-    ReadingCategory,
-    ReadingHistoryStore,
-    ReadingRecord,
-)
+from research_copilot.paper_structure import PaperStructure
+from research_copilot.reading_history import ReadingHistoryStore
+from research_copilot.reading_service import ReadingService
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_PAPER_DIRECTORY = PROJECT_ROOT / "data" / "raw"
 DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
 DEFAULT_HISTORY_DIRECTORY = PROJECT_ROOT / "artifacts" / "reading_history"
 DEFAULT_SESSION_DIRECTORY = PROJECT_ROOT / "artifacts" / "conversations"
 DEFAULT_CARD_DIRECTORY = PROJECT_ROOT / "artifacts" / "paper_cards"
-MAX_PDF_UPLOAD_BYTES = 100 * 1024 * 1024
-
-
-class PaperSummary(BaseModel):
-    id: str
-    name: str
-    relative_path: str
-    page_count: int | None
-
-
-class PaperImportResult(BaseModel):
-    paper: PaperSummary
-    imported: bool
-    message: str
-
-
 class PaperSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
-    mode: Literal["keyword", "semantic", "hybrid"] = "hybrid"
+    mode: SearchMode = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
     session_id: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]+$")
 
@@ -81,19 +63,13 @@ class PaperSearchRequest(BaseModel):
             raise ValueError("query must contain text")
         return stripped_value
 
-
-class PaperSearchResult(BaseModel):
-    source_page: int
-    chunk_index: int
-    text: str
-    score: float
-    keyword_rank: int = 0
-    keyword_score: float = 0.0
-    semantic_rank: int = 0
-    semantic_score: float = 0.0
-    fusion_score: float = 0.0
-    reference_penalty: float = 0.0
-    rerank_score: float = 0.0
+    def to_reading_context(self, paper_id: str) -> ReadingContext:
+        return ReadingContext(
+            paper_id=paper_id,
+            session_id=self.session_id,
+            query=self.query,
+            search_mode=self.mode,
+        )
 
 
 class ReadingRecordUpdate(BaseModel):
@@ -114,109 +90,6 @@ class ConversationSessionCreate(BaseModel):
         return cleaned_value
 
 
-class PaperLibrary:
-    def __init__(self, paper_directory: Path) -> None:
-        self.paper_directory = paper_directory.resolve()
-
-    def list_papers(self) -> list[PaperSummary]:
-        return [self._summarize(path) for path in self._pdf_paths()]
-
-    def get_paper_path(self, paper_id: str) -> Path:
-        for path in self._pdf_paths():
-            if self._paper_id(path) == paper_id:
-                return path
-
-        raise KeyError(paper_id)
-
-    def import_pdf(self, filename: str, content: bytes) -> PaperImportResult:
-        if not content or len(content) > MAX_PDF_UPLOAD_BYTES:
-            raise ValueError("PDF 文件为空或超过 100 MB 大小限制。")
-
-        safe_name = Path(filename.replace("\\", "/")).name.strip()
-        if not safe_name.lower().endswith(".pdf"):
-            raise ValueError("只能导入扩展名为 .pdf 的文件。")
-
-        try:
-            PdfReader(BytesIO(content))
-        except Exception as error:
-            raise ValueError("文件不是有效的 PDF，或 PDF 已损坏。") from error
-
-        digest = hashlib.sha256(content).hexdigest()
-        for existing_path in self._pdf_paths():
-            if self._file_digest(existing_path) == digest:
-                return PaperImportResult(
-                    paper=self._summarize(existing_path),
-                    imported=False,
-                    message="这篇论文已经在本地资料库中。",
-                )
-
-        self.paper_directory.mkdir(parents=True, exist_ok=True)
-        output_path = self._available_path(safe_name)
-        temporary_path = self.paper_directory / f".{uuid4().hex}.uploading"
-        temporary_path.write_bytes(content)
-        temporary_path.replace(output_path)
-        return PaperImportResult(
-            paper=self._summarize(output_path),
-            imported=True,
-            message="PDF 已导入本地资料库。",
-        )
-
-    def _pdf_paths(self) -> list[Path]:
-        if not self.paper_directory.exists():
-            return []
-
-        paths: list[Path] = []
-        for path in self.paper_directory.rglob("*.pdf"):
-            resolved_path = path.resolve()
-            if resolved_path.is_file() and resolved_path.is_relative_to(
-                self.paper_directory
-            ):
-                paths.append(resolved_path)
-
-        return sorted(
-            paths,
-            key=lambda path: self._relative_path(path).lower(),
-        )
-
-    def _summarize(self, path: Path) -> PaperSummary:
-        try:
-            page_count: int | None = len(PdfReader(path).pages)
-        except Exception:
-            page_count = None
-
-        return PaperSummary(
-            id=self._paper_id(path),
-            name=path.name,
-            relative_path=self._relative_path(path),
-            page_count=page_count,
-        )
-
-    def _paper_id(self, path: Path) -> str:
-        relative_path = self._relative_path(path)
-        return hashlib.sha256(relative_path.encode("utf-8")).hexdigest()[:16]
-
-    def _relative_path(self, path: Path) -> str:
-        return path.relative_to(self.paper_directory).as_posix()
-
-    @staticmethod
-    def _file_digest(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as source_file:
-            for block in iter(lambda: source_file.read(1024 * 1024), b""):
-                digest.update(block)
-        return digest.hexdigest()
-
-    def _available_path(self, filename: str) -> Path:
-        candidate = self.paper_directory / filename
-        suffix_number = 2
-        while candidate.exists():
-            candidate = self.paper_directory / (
-                f"{Path(filename).stem}-{suffix_number}{Path(filename).suffix}"
-            )
-            suffix_number += 1
-        return candidate
-
-
 def create_app(
     paper_directory: Path | None = None,
     processed_directory: Path | None = None,
@@ -226,6 +99,8 @@ def create_app(
     history_store: ReadingHistoryStore | None = None,
     session_store: ConversationSessionStore | None = None,
     card_compiler: PaperCardCompiler | None = None,
+    document_service: PaperDocumentService | None = None,
+    reading_service: ReadingService | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -241,6 +116,13 @@ def create_app(
     )
     sessions = session_store or ConversationSessionStore(session_directory)
     cards = card_compiler or PaperCardCompiler(DEFAULT_CARD_DIRECTORY)
+    documents = document_service or PaperDocumentService()
+    reader = reading_service or ReadingService(
+        answerer,
+        history,
+        sessions,
+        documents,
+    )
 
     app = FastAPI(
         title="ResearchCopilot",
@@ -305,7 +187,7 @@ def create_app(
             ) from error
 
         try:
-            return extract_paper_structure(paper_path)
+            return documents.structure(paper_path)
         except Exception as error:
             raise HTTPException(
                 status_code=422,
@@ -319,7 +201,7 @@ def create_app(
     def get_paper_guide(paper_id: str) -> PaperReadingGuide:
         try:
             paper_path = library.get_paper_path(paper_id)
-            return build_reading_guide(extract_paper_structure(paper_path))
+            return documents.reading_guide(paper_path)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Paper not found.") from error
         except Exception as error:
@@ -357,12 +239,12 @@ def create_app(
 
     @app.post(
         "/api/papers/{paper_id}/search",
-        response_model=list[PaperSearchResult],
+        response_model=list[SearchHit],
     )
     def search_paper(
         paper_id: str,
         request: PaperSearchRequest,
-    ) -> list[dict[str, int | float | str]]:
+    ) -> list[SearchHit]:
         try:
             paper_path = library.get_paper_path(paper_id)
         except KeyError as error:
@@ -396,34 +278,17 @@ def create_app(
             ) from error
 
         try:
-            if not sessions.contains(paper_id, request.session_id):
-                raise HTTPException(
-                    status_code=404,
-                    detail="Conversation session not found for this paper.",
-                )
-            answer = None
-            if classify_paper_question(request.query) != "content":
-                answer = answer_structural_question(
-                    request.query,
-                    extract_paper_structure(paper_path),
-                )
-            if answer is None:
-                answer = answerer.answer(
-                    paper_path,
-                    paper_id,
-                    request.query,
-                    request.mode,
-                    limit=request.limit,
-                )
-            record = history.add_record(
-                paper_id,
+            return reader.answer(
+                paper_path,
                 paper_path.name,
-                request.query,
-                request.mode,
-                answer,
-                session_id=request.session_id,
+                request.to_reading_context(paper_id),
+                limit=request.limit,
             )
-            return answer.model_copy(update={"history_id": record.id})
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Conversation session not found for this paper.",
+            ) from error
         except ModelNotConfiguredError as error:
             raise HTTPException(
                 status_code=503,
