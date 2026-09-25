@@ -8,7 +8,7 @@ from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from research_copilot.conversation_sessions import (
     ConversationSession,
@@ -18,9 +18,11 @@ from research_copilot.document_service import PaperDocumentService
 from research_copilot.domain import (
     LanguagePolicy,
     PaperAnswer,
+    ReadingAnchor,
     ReadingCategory,
     ReadingContext,
     ReadingRecord,
+    ReadingTask,
     SearchHit,
     SearchMode,
     ScopePreference,
@@ -47,6 +49,7 @@ from research_copilot.paper_structure import PaperStructure
 from research_copilot.language_preferences import PaperLanguagePreferenceStore
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.reading_service import ReadingService
+from research_copilot.selection_context import SelectionContextPreview
 
 DEFAULT_PROCESSED_DIRECTORY = PROJECT_ROOT / "data" / "processed"
 DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
@@ -63,6 +66,20 @@ class PaperSearchRequest(BaseModel):
     session_id: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]+$")
     scope_preference: ScopePreference = "auto"
     language: LanguagePolicy = Field(default_factory=LanguagePolicy)
+    task: ReadingTask = "question"
+    anchor: ReadingAnchor | None = None
+
+    @model_validator(mode="after")
+    def translation_requires_selection(self) -> "PaperSearchRequest":
+        if self.task == "translate" and (
+            self.anchor is None
+            or self.anchor.source_page is None
+            or not self.anchor.selected_text.strip()
+        ):
+            raise ValueError("选区翻译必须包含原文页码和选区文本。")
+        if self.anchor and len(self.anchor.selected_text) > 4000:
+            raise ValueError("选区过长，请缩小选区后再翻译。")
+        return self
 
     @field_validator("query")
     @classmethod
@@ -80,7 +97,22 @@ class PaperSearchRequest(BaseModel):
             search_mode=self.mode,
             scope_preference=self.scope_preference,
             language=self.language,
+            task=self.task,
+            anchor=self.anchor,
         )
+
+
+class SelectionContextRequest(BaseModel):
+    source_page: int = Field(ge=1)
+    selected_text: str = Field(min_length=1, max_length=4000)
+
+    @field_validator("selected_text")
+    @classmethod
+    def selected_text_must_contain_text(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("selected_text must contain text")
+        return cleaned
 
 
 class ReadingRecordUpdate(BaseModel):
@@ -305,6 +337,31 @@ def create_app(
             scope.model_dump(), ensure_ascii=True
         )
         return [SearchHit.model_validate(result) for result in results]
+
+    @app.post(
+        "/api/papers/{paper_id}/selection-context",
+        response_model=SelectionContextPreview,
+    )
+    def preview_selection_context(
+        paper_id: str,
+        request: SelectionContextRequest,
+    ) -> SelectionContextPreview:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(
+                status_code=404,
+                detail="Paper not found.",
+            ) from error
+        try:
+            return reader.selection_context(
+                paper_path,
+                paper_id,
+                request.source_page,
+                request.selected_text,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @app.post(
         "/api/papers/{paper_id}/answer",

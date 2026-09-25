@@ -130,7 +130,10 @@ class ReadingRecord(BaseModel):
     paper_name: str
     created_at: str
     question: str
+    task: ReadingTask = "question"
     session_id: str = "default"
+    anchor: ReadingAnchor | None = None
+    context_text: str = ""
     search_mode: SearchMode
     answer: str
     explanation: str

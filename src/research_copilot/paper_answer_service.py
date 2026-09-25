@@ -11,6 +11,7 @@ from research_copilot.domain import (
     Evidence,
     LanguagePolicy,
     PaperAnswer,
+    ReadingTask,
     ReadingScope,
     SearchHit,
     SearchMode,
@@ -47,6 +48,8 @@ class AnswerModel(Protocol):
         question: str,
         evidence: list[Evidence],
         language: LanguagePolicy | None = None,
+        task: ReadingTask = "question",
+        task_context: str = "",
     ) -> ModelAnswerDraft: ...
 
 
@@ -60,6 +63,8 @@ class SearchService(Protocol):
         limit: int = 5,
         scope: ReadingScope | None = None,
     ) -> list[SearchHit | Mapping[str, object]]: ...
+
+    def page_text(self, pdf_path: Path, paper_id: str, source_page: int) -> str: ...
 
 
 class DeepSeekAnswerModel:
@@ -90,6 +95,8 @@ class DeepSeekAnswerModel:
         question: str,
         evidence: list[Evidence],
         language: LanguagePolicy | None = None,
+        task: ReadingTask = "question",
+        task_context: str = "",
     ) -> ModelAnswerDraft:
         api_key = self._get_api_key()
 
@@ -108,6 +115,8 @@ class DeepSeekAnswerModel:
                         question,
                         evidence,
                         language or LanguagePolicy(),
+                        task,
+                        task_context,
                     ),
                     "max_output_tokens": 1600,
                     "text": {
@@ -198,6 +207,8 @@ class DeepSeekAnswerModel:
         question: str,
         evidence: list[Evidence],
         language: LanguagePolicy | None = None,
+        task: ReadingTask = "question",
+        task_context: str = "",
     ) -> str:
         policy = language or LanguagePolicy()
         evidence_text = "\n\n".join(
@@ -217,6 +228,23 @@ class DeepSeekAnswerModel:
             "preserve_english": "专业术语、缩写和变量保持英文，不擅自翻译。",
             "translate_all": "在不改变含义的前提下翻译术语；关键英文术语可在首次出现时括注。",
         }[policy.terminology_policy]
+        if task == "translate":
+            target_language = {
+                "zh-CN": "简体中文",
+                "en": "English",
+            }[policy.translation_target]
+            return (
+                f"任务：把论文证据中标记为精确选区的原文翻译成{target_language}。\n"
+                "周边上下文仅用于理解术语、指代和句法；不得翻译选区之外的内容，"
+                "不得补充论文没有表达的意思。\n"
+                f"术语策略：{terminology_instruction}\n"
+                f"用户要求：{question}\n\n"
+                f"仅供理解、不应额外翻译的同页上下文：\n{task_context}\n\n"
+                "以下是唯一需要翻译的原文证据：\n\n"
+                f"{evidence_text}\n\n"
+                f"请用{target_language}填写 answer；explanation 简短说明术语处理。"
+                "在 cited_evidence_ids 中列出支持译文的证据编号。"
+            )
         return (
             f"问题：{question}\n\n"
             "以下是从当前论文中检索到的全部可用证据：\n\n"
@@ -245,9 +273,14 @@ class PaperAnswerService:
         limit: int = 5,
         scope: ReadingScope | None = None,
         language: LanguagePolicy | None = None,
+        task: ReadingTask = "question",
+        direct_evidence: list[SearchHit | Mapping[str, object]] | None = None,
+        task_context: str = "",
     ) -> PaperAnswer:
         policy = language or LanguagePolicy()
-        if scope is None:
+        if direct_evidence is not None:
+            raw_evidence = direct_evidence
+        elif scope is None:
             raw_evidence = self.search_service.search(
                 pdf_path,
                 paper_id,
@@ -292,7 +325,13 @@ class PaperAnswerService:
                 language=policy,
             )
 
-        draft = self.answer_model.generate(question, evidence, policy)
+        draft = self.answer_model.generate(
+            question,
+            evidence,
+            policy,
+            task,
+            task_context,
+        )
         evidence_by_id = {item.evidence_id: item for item in evidence}
         valid_ids = list(
             dict.fromkeys(

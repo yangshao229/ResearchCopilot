@@ -707,6 +707,53 @@ button:disabled {
   background: #fff;
 }
 
+.selection-context-preview {
+  margin-top: 10px;
+  border-top: 1px solid #cbd9ce;
+  padding-top: 10px;
+}
+
+.selection-context-note {
+  color: #526b5a;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.selection-context-preview details {
+  margin: 8px 0;
+  color: #405449;
+  font-size: 11px;
+}
+
+.selection-context-preview summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.selection-context-preview blockquote {
+  max-height: 160px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+
+.selection-context-preview > button {
+  width: 100%;
+  border: 1px solid #426f56;
+  border-radius: 8px;
+  padding: 9px;
+  color: #fff;
+  background: #315d45;
+  font-weight: 700;
+}
+
+.selection-context-preview > button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
 .mode-picker {
   margin-top: 20px;
   display: grid;

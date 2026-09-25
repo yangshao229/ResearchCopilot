@@ -401,7 +401,9 @@ class AnswerApiFakeModel:
     provider_name = "fake"
     model_name = "fake-answer-model"
 
-    def generate(self, question, evidence, language=None):
+    def generate(
+        self, question, evidence, language=None, task="question", task_context=""
+    ):
         return ModelAnswerDraft(
             answer="Transformer 不使用循环结构，因此能并行处理序列位置。",
             explanation="证据明确对比了循环网络的顺序计算限制。",
@@ -496,6 +498,114 @@ def test_paper_api_generates_answer_with_verified_page_citation(
     assert export_response.status_code == 200
     assert "review_status: confirmed" in export_response.text
     assert "我确认了第 2 页原文" in export_response.text
+
+
+def test_selection_context_preview_and_translation_keep_anchor_and_context(
+    tmp_path: Path,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    processed_directory = tmp_path / "processed"
+    paper_directory.mkdir()
+    paper_path = paper_directory / "attention.pdf"
+    create_test_pdf(paper_path, page_count=2)
+    search_service = PaperSearchService(processed_directory)
+    history_store = ReadingHistoryStore(tmp_path / "history")
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            processed_directory=processed_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+            search_service=search_service,
+            answer_service=PaperAnswerService(
+                search_service,
+                AnswerApiFakeModel(),
+            ),
+            history_store=history_store,
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    processed_directory.mkdir()
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {
+                    "source_page": 1,
+                    "text": "Other page content.",
+                },
+                {
+                    "source_page": 2,
+                    "text": (
+                        "Earlier discussion provides context. " * 60
+                        + "The selected clause improves contextual translation. "
+                        + "Later discussion explains the consequences. " * 60
+                    ),
+                },
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+    selected_text = "improves contextual translation."
+    preview_response = client.post(
+        f"/api/papers/{paper_id}/selection-context",
+        json={"source_page": 2, "selected_text": selected_text},
+    )
+
+    assert preview_response.status_code == 200
+    preview = preview_response.json()
+    assert preview["method"] == "page_window"
+    assert selected_text in preview["context_text"]
+    assert client.get(f"/api/papers/{paper_id}/history").json() == []
+
+    answer_response = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "mode": "hybrid",
+            "session_id": "default",
+            "task": "translate",
+            "anchor": {
+                "source_page": 2,
+                "selected_text": selected_text,
+                "section_title": "",
+            },
+            "language": {
+                "explanation_language": "follow_question",
+                "translation_target": "zh-CN",
+                "terminology_policy": "bilingual_first_use",
+            },
+        },
+    )
+
+    assert answer_response.status_code == 200
+    answer = answer_response.json()
+    assert answer["citations"][0]["source_page"] == 2
+    record = client.get(f"/api/papers/{paper_id}/history").json()[0]
+    assert record["task"] == "translate"
+    assert record["anchor"]["source_page"] == 2
+    assert selected_text in record["anchor"]["selected_text"]
+    assert selected_text in record["context_text"]
+
+
+def test_translation_request_requires_a_source_anchor(tmp_path: Path) -> None:
+    paper_directory = tmp_path / "papers"
+    paper_directory.mkdir()
+    paper_path = paper_directory / "attention.pdf"
+    create_test_pdf(paper_path)
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+
+    response = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={"query": "translate", "task": "translate"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_paper_answer_and_history_stay_inside_selected_session(

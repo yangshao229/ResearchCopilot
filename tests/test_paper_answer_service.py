@@ -36,15 +36,21 @@ class FakeAnswerModel:
         self.draft = draft
         self.received_evidence: list[Evidence] = []
         self.received_language: LanguagePolicy | None = None
+        self.received_task = "question"
+        self.received_task_context = ""
 
     def generate(
         self,
         question: str,
         evidence: list[Evidence],
         language: LanguagePolicy | None = None,
+        task="question",
+        task_context="",
     ) -> ModelAnswerDraft:
         self.received_evidence = evidence
         self.received_language = language
+        self.received_task = task
+        self.received_task_context = task_context
         return self.draft
 
 
@@ -113,6 +119,46 @@ def test_answer_passes_language_policy_to_model() -> None:
 
     assert answer.language == policy
     assert model.received_language == policy
+
+
+def test_translation_uses_only_direct_selection_evidence_and_context() -> None:
+    model = FakeAnswerModel(
+        ModelAnswerDraft(
+            answer="翻译结果",
+            explanation="术语按偏好保留。",
+            cited_evidence_ids=[1],
+            insufficient_evidence=False,
+            uncertainty="",
+        )
+    )
+    search_service = FakeSearchService(
+        [{"source_page": 9, "chunk_index": 3, "text": "RAG hit", "score": 0.9}]
+    )
+    service = PaperAnswerService(search_service, model)
+    selected = {
+        "source_page": 2,
+        "chunk_index": 0,
+        "text": "The selected sentence.",
+        "score": 1.0,
+    }
+
+    answer = service.answer(
+        Path("paper.pdf"),
+        "paper-id",
+        "Translate selected text",
+        "hybrid",
+        task="translate",
+        direct_evidence=[selected],
+        task_context="A sentence before. The selected sentence. A sentence after.",
+        language=LanguagePolicy(translation_target="en"),
+    )
+
+    assert [item.text for item in model.received_evidence] == [
+        "The selected sentence."
+    ]
+    assert model.received_task == "translate"
+    assert "A sentence before." in model.received_task_context
+    assert answer.citations[0].source_page == 2
 
 
 def test_answer_fails_closed_when_model_cites_unknown_evidence() -> None:

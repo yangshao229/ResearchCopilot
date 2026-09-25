@@ -339,3 +339,20 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：`Literal` 类型与请求边界校验、Pydantic 默认工厂、按论文 ID 隔离的配置 JSON、FastAPI GET/PUT、语言策略如何进入模型提示词、一次请求的配置快照为何随记录保存、旧 JSON 数据迁移兼容、为什么证据仍保持原文。
 
 验证结果：`80 passed`；论文语言偏好隔离、API 输入校验、回答生成传参、阅读历史快照和旧 JSON 兼容通过；前端 TypeScript 检查与生产构建通过。未调用真实 DeepSeek。此步只建立语言偏好与输出策略，还没有完整英文 UI、自动原文语言检测、段落级翻译上下文、术语表、翻译缓存或整篇双语视图。详细结果见 [M6.5.1 验收](M6_5_1_VALIDATION.md)。
+
+## M6.5.2：选区上下文翻译
+
+设计依据：[选区上下文翻译开源产品拆解](research/2026-09-25-selection-context-translation.md)。
+
+新增文件：
+
+- `src/research_copilot/selection_context.py`
+- `tests/test_selection_context.py`
+- `docs/research/2026-09-25-selection-context-translation.md`
+- `docs/M6_5_2_VALIDATION.md`
+
+重要修改：`domain.py`、`paper_answer_service.py`、`paper_search_service.py`、`reading_history.py`、`reading_service.py`、`web_app.py`、`test_paper_answer_service.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`。
+
+以后学习：空白归一化与偏移映射、PDF 文本层为何不等于段落结构、上下文窗口与长度限制、前端本地预览和显式外部调用的隐私边界、直接证据与 RAG 检索证据的区别、`ReadingContext` 的 task/anchor 如何流经 API/服务/模型/历史记录、Pydantic 对旧 JSON 的兼容默认值。
+
+验证结果：完整测试 `88 passed`；前端 TypeScript 与生产构建通过；`sample.pdf` 第 2 页本地恢复出选区上下文。不调用真实 DeepSeek/Hugging Face。详细结果见 [M6.5.2 验收](M6_5_2_VALIDATION.md)。

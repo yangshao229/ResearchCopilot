@@ -7,6 +7,7 @@ from research_copilot.paper_search import (
     semantic_search_page_data,
 )
 from research_copilot.pdf_importer import import_pdf_to_json
+from research_copilot.page_store import load_page_data
 from research_copilot.semantic_retriever import (
     E5EmbeddingModel,
     EmbeddingModel,
@@ -89,6 +90,21 @@ class PaperSearchService:
 
     def page_data_path(self, paper_id: str) -> Path:
         return self.processed_directory / f"{paper_id}.json"
+
+    def page_text(self, pdf_path: Path, paper_id: str, source_page: int) -> str:
+        page_data_path = self._ensure_page_data(pdf_path, paper_id)
+        page_data = load_page_data(page_data_path)
+        pages = page_data.get("pages", [])
+        if not isinstance(pages, list):
+            return ""
+        for page in pages:
+            if (
+                isinstance(page, dict)
+                and page.get("source_page") == source_page
+                and isinstance(page.get("text"), str)
+            ):
+                return page["text"]
+        return ""
 
     def _ensure_page_data(self, pdf_path: Path, paper_id: str) -> Path:
         page_data_path = self.page_data_path(paper_id)

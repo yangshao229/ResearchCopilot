@@ -56,6 +56,26 @@ export type LanguagePolicy = {
     | "preserve_english"
     | "translate_all";
 };
+export type ReadingTask =
+  | "lookup"
+  | "translate"
+  | "explain"
+  | "formula"
+  | "question"
+  | "structure"
+  | "summarize";
+export type ReadingAnchor = {
+  source_page: number | null;
+  selected_text: string;
+  section_title: string;
+};
+export type SelectionContextPreview = {
+  source_page: number;
+  selected_text: string;
+  context_text: string;
+  method: "paragraph" | "page_window" | "selection_only";
+  note: string;
+};
 export type ReadingScope = {
   kind: "full_paper" | "section" | "selection";
   resolution: "full_paper" | "matched" | "fallback";
@@ -118,7 +138,10 @@ export type ReadingRecord = {
   paper_name: string;
   created_at: string;
   question: string;
+  task: ReadingTask;
   session_id: string;
+  anchor: ReadingAnchor | null;
+  context_text: string;
   search_mode: SearchMode;
   answer: string;
   explanation: string;
@@ -331,6 +354,8 @@ export async function answerPaper(
   limit = 5,
   scopePreference: ScopePreference = "auto",
   language?: LanguagePolicy,
+  task: ReadingTask = "question",
+  anchor?: ReadingAnchor,
 ): Promise<PaperAnswer> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/answer`,
@@ -345,6 +370,8 @@ export async function answerPaper(
         limit,
         session_id: sessionId,
         scope_preference: scopePreference,
+        task,
+        ...(anchor ? { anchor } : {}),
         ...(language ? { language } : {}),
       }),
     },
@@ -355,6 +382,25 @@ export async function answerPaper(
   }
 
   return (await response.json()) as PaperAnswer;
+}
+
+export async function previewSelectionContext(
+  paperId: string,
+  sourcePage: number,
+  selectedText: string,
+): Promise<SelectionContextPreview> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/selection-context`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_page: sourcePage, selected_text: selectedText }),
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(response, "选区上下文读取失败");
+  }
+  return (await response.json()) as SelectionContextPreview;
 }
 
 export async function listReadingHistory(

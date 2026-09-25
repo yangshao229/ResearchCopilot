@@ -11,9 +11,11 @@ from research_copilot.domain import (
     LanguagePolicy,
     PaperAnswer,
     ReadingCategory,
+    ReadingAnchor,
     ReadingRecord,
     ReadingScope,
     SearchMode,
+    ReadingTask,
 )
 from research_copilot.storage import (
     atomic_write_json,
@@ -54,6 +56,9 @@ class ReadingHistoryStore:
         session_id: str = "default",
         scope: ReadingScope | None = None,
         language: LanguagePolicy | None = None,
+        task: ReadingTask = "question",
+        anchor: ReadingAnchor | None = None,
+        context_text: str = "",
     ) -> ReadingRecord:
         with self._lock:
             record = ReadingRecord(
@@ -62,7 +67,10 @@ class ReadingHistoryStore:
                 paper_name=paper_name,
                 created_at=datetime.now(UTC).isoformat(),
                 question=question,
+                task=task,
                 session_id=session_id,
+                anchor=anchor,
+                context_text=context_text,
                 search_mode=search_mode,
                 answer=answer.answer,
                 explanation=answer.explanation,
@@ -160,6 +168,8 @@ class ReadingHistoryStore:
             f"source_pdf: {json.dumps(record.paper_name, ensure_ascii=False)}\n"
             f"question_id: {record.id}\n"
             f"created_at: {record.created_at}\n"
+            f"task: {record.task}\n"
+            f"source_page: {record.anchor.source_page if record.anchor else ''}\n"
             "review_status: confirmed\n"
             f"model: {json.dumps(record.model, ensure_ascii=False)}\n"
             f"reading_scope: {json.dumps(scope_note, ensure_ascii=False)}\n"

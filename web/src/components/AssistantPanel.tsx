@@ -9,6 +9,7 @@ import {
   getPaperStructure,
   listConversationSessions,
   listReadingHistory,
+  previewSelectionContext,
   previewPaperCard,
   searchPaper,
   savePaperLanguagePreferences,
@@ -23,6 +24,8 @@ import {
   type SearchMode,
   type SearchResult,
   type ScopePreference,
+  type ReadingAnchor,
+  type SelectionContextPreview,
 } from "../api";
 import type { PdfSelection } from "./PdfReader";
 import {
@@ -96,6 +99,12 @@ export default function AssistantPanel({
   const [structure, setStructure] = useState<PaperStructure | null>(null);
   const [structureError, setStructureError] = useState<string | null>(null);
   const [isLoadingStructure, setIsLoadingStructure] = useState(true);
+  const [selectionPreview, setSelectionPreview] =
+    useState<SelectionContextPreview | null>(null);
+  const [selectionPreviewError, setSelectionPreviewError] =
+    useState<string | null>(null);
+  const [isLoadingSelectionPreview, setIsLoadingSelectionPreview] =
+    useState(false);
 
   useEffect(() => {
     let isCurrent = true;
@@ -197,6 +206,37 @@ export default function AssistantPanel({
       isCurrent = false;
     };
   }, [paper.id, activeSessionId]);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setSelectionPreview(null);
+    setSelectionPreviewError(null);
+    if (!selection) {
+      setIsLoadingSelectionPreview(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
+    setIsLoadingSelectionPreview(true);
+    previewSelectionContext(paper.id, selection.sourcePage, selection.text)
+      .then((preview) => {
+        if (isCurrent) setSelectionPreview(preview);
+      })
+      .catch((reason: unknown) => {
+        if (isCurrent) {
+          setSelectionPreviewError(
+            reason instanceof Error ? reason.message : "选区上下文读取失败。",
+          );
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingSelectionPreview(false);
+      });
+    return () => {
+      isCurrent = false;
+    };
+  }, [paper.id, selection?.sourcePage, selection?.text]);
 
   useEffect(() => {
     setIsLoadingStructure(true);
@@ -403,8 +443,11 @@ export default function AssistantPanel({
     }
   };
 
-  const runAnswer = async () => {
-    const query = question.trim();
+  const runAnswer = async (
+    task: "question" | "translate" = "question",
+    anchor?: ReadingAnchor,
+  ) => {
+    const query = task === "translate" ? "翻译当前选中的论文原文" : question.trim();
     if (!query || isBusy) {
       return;
     }
@@ -421,6 +464,8 @@ export default function AssistantPanel({
         5,
         scopePreference,
         languagePolicy,
+        task,
+        anchor,
       );
       setAnswer(paperAnswer);
       setResults(paperAnswer.evidence);
@@ -603,16 +648,48 @@ export default function AssistantPanel({
                 </button>
               </div>
               <blockquote>{selection.text}</blockquote>
-              <button
-                type="button"
-                onClick={() =>
-                  useSelection(
-                    `请将下面的论文原文翻译为${languagePolicy.translation_target === "zh-CN" ? "简体中文" : "English"}，并遵循当前论文的术语策略。`,
-                  )
-                }
-              >
-                翻译
-              </button>
+              {isLoadingSelectionPreview && (
+                <p className="selection-context-note">正在本地读取该页上下文…</p>
+              )}
+              {selectionPreviewError && (
+                <p className="selection-context-note">{selectionPreviewError}</p>
+              )}
+              {selectionPreview && (
+                <div className="selection-context-preview">
+                  <p className="selection-context-note">
+                    将发送给 DeepSeek：第 {selectionPreview.source_page} 页、
+                    {languagePolicy.translation_target === "zh-CN" ? "简体中文" : "English"}译文、
+                    {selectionPreview.method === "selection_only"
+                      ? "仅精确选区"
+                      : `精确选区 + 同页上下文（约 ${selectionPreview.context_text.length} 字符）`}
+                    。{selectionPreview.note}
+                  </p>
+                  <details>
+                    <summary>查看实际发送的上下文</summary>
+                    <strong>精确选区（唯一翻译内容）</strong>
+                    <blockquote>{selectionPreview.selected_text}</blockquote>
+                    {selectionPreview.method !== "selection_only" && (
+                      <>
+                        <strong>仅用于消歧的同页上下文</strong>
+                        <blockquote>{selectionPreview.context_text}</blockquote>
+                      </>
+                    )}
+                  </details>
+                  <button
+                    type="button"
+                    disabled={isBusy || isLoadingLanguagePolicy}
+                    onClick={() =>
+                      void runAnswer("translate", {
+                        source_page: selectionPreview.source_page,
+                        selected_text: selectionPreview.selected_text,
+                        section_title: "",
+                      })
+                    }
+                  >
+                    {isAnswering ? "正在翻译…" : "发送选区翻译"}
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 onClick={() => useSelection("请用中文解释下面这段原文，并说明理解它需要的前置知识。")}
