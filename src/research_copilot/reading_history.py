@@ -60,6 +60,7 @@ class ReadingHistoryStore:
         anchor: ReadingAnchor | None = None,
         context_text: str = "",
         prompt_version: str = "",
+        glossary_signature: str = "",
     ) -> ReadingRecord:
         with self._lock:
             record = ReadingRecord(
@@ -73,6 +74,7 @@ class ReadingHistoryStore:
                 anchor=anchor,
                 context_text=context_text,
                 prompt_version=prompt_version,
+                glossary_signature=glossary_signature,
                 search_mode=search_mode,
                 answer=answer.answer,
                 explanation=answer.explanation,

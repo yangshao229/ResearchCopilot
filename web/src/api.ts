@@ -56,6 +56,12 @@ export type LanguagePolicy = {
     | "preserve_english"
     | "translate_all";
 };
+export type GlossaryEntry = {
+  id: string;
+  source: string;
+  translation: string;
+  target_language: "zh-CN" | "en";
+};
 export type ReadingTask =
   | "lookup"
   | "translate"
@@ -75,6 +81,7 @@ export type SelectionContextPreview = {
   context_text: string;
   method: "paragraph" | "page_window" | "selection_only";
   note: string;
+  glossary_terms: GlossaryEntry[];
 };
 export type ReadingScope = {
   kind: "full_paper" | "section" | "selection";
@@ -226,6 +233,38 @@ export async function savePaperLanguagePreferences(
     throw await responseError(response, "论文语言偏好保存失败");
   }
   return (await response.json()) as LanguagePolicy;
+}
+
+export async function listPaperGlossary(paperId: string): Promise<GlossaryEntry[]> {
+  const response = await fetch(`/api/papers/${encodeURIComponent(paperId)}/glossary`);
+  if (!response.ok) throw await responseError(response, "论文术语表加载失败");
+  return (await response.json()) as GlossaryEntry[];
+}
+
+export async function addPaperGlossaryEntry(
+  paperId: string,
+  source: string,
+  translation: string,
+  targetLanguage: GlossaryEntry["target_language"],
+): Promise<GlossaryEntry> {
+  const response = await fetch(`/api/papers/${encodeURIComponent(paperId)}/glossary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source, translation, target_language: targetLanguage }),
+  });
+  if (!response.ok) throw await responseError(response, "论文术语保存失败");
+  return (await response.json()) as GlossaryEntry;
+}
+
+export async function deletePaperGlossaryEntry(
+  paperId: string,
+  entryId: string,
+): Promise<void> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/glossary/${encodeURIComponent(entryId)}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok) throw await responseError(response, "论文术语删除失败");
 }
 
 export async function importPaper(file: File): Promise<PaperImportResult> {
@@ -391,13 +430,18 @@ export async function previewSelectionContext(
   paperId: string,
   sourcePage: number,
   selectedText: string,
+  targetLanguage: GlossaryEntry["target_language"] = "zh-CN",
 ): Promise<SelectionContextPreview> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/selection-context`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ source_page: sourcePage, selected_text: selectedText }),
+      body: JSON.stringify({
+        source_page: sourcePage,
+        selected_text: selectedText,
+        target_language: targetLanguage,
+      }),
     },
   );
   if (!response.ok) {

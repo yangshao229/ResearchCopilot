@@ -45,6 +45,15 @@ class LanguagePolicy(BaseModel):
     terminology_policy: TerminologyPolicy = "bilingual_first_use"
 
 
+class GlossaryEntry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
+    source: str = Field(min_length=1, max_length=100)
+    translation: str = Field(min_length=1, max_length=100)
+    target_language: TranslationLanguage
+
+
 class ReadingAnchor(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -137,6 +146,7 @@ class ReadingRecord(BaseModel):
     anchor: ReadingAnchor | None = None
     context_text: str = ""
     prompt_version: str = ""
+    glossary_signature: str = ""
     search_mode: SearchMode
     answer: str
     explanation: str

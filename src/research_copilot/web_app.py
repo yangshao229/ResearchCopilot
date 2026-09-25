@@ -16,6 +16,7 @@ from research_copilot.conversation_sessions import (
 )
 from research_copilot.document_service import PaperDocumentService
 from research_copilot.domain import (
+    GlossaryEntry,
     LanguagePolicy,
     PaperAnswer,
     ReadingAnchor,
@@ -26,7 +27,9 @@ from research_copilot.domain import (
     SearchHit,
     SearchMode,
     ScopePreference,
+    TranslationLanguage,
 )
+from research_copilot.paper_glossary import PaperGlossaryStore
 from research_copilot.paper_answer_service import (
     AnswerGenerationError,
     ModelNotConfiguredError,
@@ -59,6 +62,9 @@ DEFAULT_CARD_DIRECTORY = PROJECT_ROOT / "artifacts" / "paper_cards"
 DEFAULT_LANGUAGE_PREFERENCES_DIRECTORY = (
     PROJECT_ROOT / "artifacts" / "language_preferences"
 )
+DEFAULT_GLOSSARY_DIRECTORY = PROJECT_ROOT / "artifacts" / "glossary"
+
+
 class PaperSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     mode: SearchMode = "hybrid"
@@ -109,6 +115,7 @@ class PaperSearchRequest(BaseModel):
 class SelectionContextRequest(BaseModel):
     source_page: int = Field(ge=1)
     selected_text: str = Field(min_length=1, max_length=4000)
+    target_language: TranslationLanguage = "zh-CN"
 
     @field_validator("selected_text")
     @classmethod
@@ -116,6 +123,20 @@ class SelectionContextRequest(BaseModel):
         cleaned = " ".join(value.split())
         if not cleaned:
             raise ValueError("selected_text must contain text")
+        return cleaned
+
+
+class GlossaryEntryCreate(BaseModel):
+    source: str = Field(min_length=1, max_length=100)
+    translation: str = Field(min_length=1, max_length=100)
+    target_language: TranslationLanguage = "zh-CN"
+
+    @field_validator("source", "translation")
+    @classmethod
+    def glossary_text_must_contain_text(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("术语原文和指定译名不能为空。")
         return cleaned
 
 
@@ -149,6 +170,7 @@ def create_app(
     document_service: PaperDocumentService | None = None,
     reading_service: ReadingService | None = None,
     language_preference_store: PaperLanguagePreferenceStore | None = None,
+    glossary_store: PaperGlossaryStore | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -168,11 +190,18 @@ def create_app(
     language_preferences = language_preference_store or PaperLanguagePreferenceStore(
         DEFAULT_LANGUAGE_PREFERENCES_DIRECTORY
     )
+    glossary_directory = (
+        history.root_directory.parent / "glossary"
+        if history_store is not None
+        else DEFAULT_GLOSSARY_DIRECTORY
+    )
+    glossary = glossary_store or PaperGlossaryStore(glossary_directory)
     reader = reading_service or ReadingService(
         answerer,
         history,
         sessions,
         documents,
+        glossary,
     )
 
     app = FastAPI(
@@ -185,7 +214,7 @@ def create_app(
             "http://127.0.0.1:5173",
             "http://localhost:5173",
         ],
-        allow_methods=["GET", "POST", "PATCH", "PUT"],
+        allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["*"],
         expose_headers=["X-Reading-Scope"],
     )
@@ -222,6 +251,50 @@ def create_app(
             return language_preferences.save(paper_id, policy)
         except KeyError as error:
             raise HTTPException(status_code=404, detail="Paper not found.") from error
+
+    @app.get(
+        "/api/papers/{paper_id}/glossary",
+        response_model=list[GlossaryEntry],
+    )
+    def list_paper_glossary(paper_id: str) -> list[GlossaryEntry]:
+        try:
+            library.get_paper_path(paper_id)
+            return glossary.list_entries(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+
+    @app.post(
+        "/api/papers/{paper_id}/glossary",
+        response_model=GlossaryEntry,
+    )
+    def add_paper_glossary_entry(
+        paper_id: str,
+        request: GlossaryEntryCreate,
+    ) -> GlossaryEntry:
+        try:
+            library.get_paper_path(paper_id)
+            return glossary.add_entry(
+                paper_id,
+                request.source,
+                request.translation,
+                request.target_language,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.delete("/api/papers/{paper_id}/glossary/{entry_id}")
+    def delete_paper_glossary_entry(paper_id: str, entry_id: str) -> dict[str, str]:
+        try:
+            library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        try:
+            glossary.delete_entry(paper_id, entry_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="术语条目不存在。") from error
+        return {"status": "deleted"}
 
     @app.post("/api/papers/import", response_model=PaperImportResult)
     async def import_paper(request: Request) -> PaperImportResult:
@@ -363,6 +436,7 @@ def create_app(
                 paper_id,
                 request.source_page,
                 request.selected_text,
+                request.target_language,
             )
         except ValueError as error:
             raise HTTPException(status_code=422, detail=str(error)) from error

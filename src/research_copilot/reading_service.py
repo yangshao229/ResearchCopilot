@@ -11,6 +11,12 @@ from research_copilot.domain import (
     ReadingContext,
     ReadingScope,
     SearchHit,
+    TranslationLanguage,
+)
+from research_copilot.paper_glossary import (
+    PaperGlossaryStore,
+    glossary_signature,
+    match_glossary_entries,
 )
 from research_copilot.paper_answer_service import PaperAnswerService
 from research_copilot.paper_question_router import (
@@ -24,7 +30,7 @@ from research_copilot.selection_context import (
     build_selection_context,
 )
 
-TRANSLATION_PROMPT_VERSION = "selection-translation-v1"
+TRANSLATION_PROMPT_VERSION = "selection-translation-v2-glossary"
 
 
 class ReadingService:
@@ -34,11 +40,15 @@ class ReadingService:
         history_store: ReadingHistoryStore,
         session_store: ConversationSessionStore,
         document_service: PaperDocumentService,
+        glossary_store: PaperGlossaryStore | None = None,
     ) -> None:
         self.answer_service = answer_service
         self.history_store = history_store
         self.session_store = session_store
         self.document_service = document_service
+        self.glossary_store = glossary_store or PaperGlossaryStore(
+            history_store.root_directory.parent / "glossary"
+        )
 
     def answer(
         self,
@@ -61,6 +71,7 @@ class ReadingService:
                 context.paper_id,
                 context.anchor.source_page,
                 context.anchor.selected_text,
+                context.language.translation_target,
             )
             if not selection_preview.selected_text:
                 raise ValueError("选区为空，无法翻译。")
@@ -111,6 +122,11 @@ class ReadingService:
                     if selection_preview is not None
                     else ""
                 ),
+                glossary_terms=(
+                    selection_preview.glossary_terms
+                    if selection_preview is not None
+                    else None
+                ),
             )
         answer = answer.model_copy(
             update={"scope": scope, "language": context.language}
@@ -135,6 +151,11 @@ class ReadingService:
             prompt_version=(
                 TRANSLATION_PROMPT_VERSION if context.task == "translate" else ""
             ),
+            glossary_signature=(
+                glossary_signature(selection_preview.glossary_terms)
+                if selection_preview is not None
+                else ""
+            ),
         )
         return answer.model_copy(update={"history_id": record.id})
 
@@ -145,6 +166,7 @@ class ReadingService:
         hit: SearchHit,
     ) -> PaperAnswer | None:
         model = self.answer_service.answer_model
+        current_glossary_signature = glossary_signature(preview.glossary_terms)
         for record in self.history_store.list_records(
             context.paper_id, session_id=context.session_id
         ):
@@ -155,6 +177,7 @@ class ReadingService:
                 or record.anchor.source_page != preview.source_page
                 or record.anchor.selected_text != preview.selected_text
                 or record.context_text != preview.context_text
+                or record.glossary_signature != current_glossary_signature
                 or record.language != context.language
                 or record.provider != model.provider_name
                 or record.model != model.model_name
@@ -190,13 +213,21 @@ class ReadingService:
         paper_id: str,
         source_page: int,
         selected_text: str,
+        target_language: TranslationLanguage = "zh-CN",
     ) -> SelectionContextPreview:
         page_text = self.answer_service.search_service.page_text(
             pdf_path,
             paper_id,
             source_page,
         )
-        return build_selection_context(page_text, selected_text, source_page)
+        preview = build_selection_context(page_text, selected_text, source_page)
+        terms = match_glossary_entries(
+            self.glossary_store.list_entries(paper_id),
+            preview.selected_text,
+            preview.context_text,
+            target_language,
+        )
+        return preview.model_copy(update={"glossary_terms": terms})
 
     def resolve_scope(
         self,

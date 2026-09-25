@@ -404,11 +404,14 @@ class AnswerApiFakeModel:
     def __init__(self) -> None:
         self.call_count = 0
         self.insufficient_evidence = False
+        self.received_glossary_terms = []
 
     def generate(
-        self, question, evidence, language=None, task="question", task_context=""
+        self, question, evidence, language=None, task="question", task_context="",
+        glossary_terms=None,
     ):
         self.call_count += 1
+        self.received_glossary_terms = glossary_terms or []
         return ModelAnswerDraft(
             answer="Transformer 不使用循环结构，因此能并行处理序列位置。",
             explanation="证据明确对比了循环网络的顺序计算限制。",
@@ -591,7 +594,7 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     assert record["anchor"]["source_page"] == 2
     assert selected_text in record["anchor"]["selected_text"]
     assert selected_text in record["context_text"]
-    assert record["prompt_version"] == "selection-translation-v1"
+    assert record["prompt_version"] == "selection-translation-v2-glossary"
     assert answer["cache_hit"] is False
     assert fake_model.call_count == 1
 
@@ -746,6 +749,113 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     )
     assert old_format_record.json()["cache_hit"] is False
     assert fake_model.call_count == 10
+
+
+def test_glossary_preview_model_and_translation_cache_stay_in_sync(
+    tmp_path: Path,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    processed_directory = tmp_path / "processed"
+    paper_directory.mkdir()
+    create_test_pdf(paper_directory / "attention.pdf")
+    search_service = PaperSearchService(processed_directory)
+    fake_model = AnswerApiFakeModel()
+    history_store = ReadingHistoryStore(tmp_path / "history")
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            processed_directory=processed_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+            search_service=search_service,
+            answer_service=PaperAnswerService(search_service, fake_model),
+            history_store=history_store,
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    processed_directory.mkdir()
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {"source_page": 1, "text": "Other discussion."},
+                {
+                    "source_page": 2,
+                    "text": "An attention head combines representations.",
+                },
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+    matched_entry = client.post(
+        f"/api/papers/{paper_id}/glossary",
+        json={"source": "attention head", "translation": "注意力头"},
+    ).json()
+    preview_request = {
+        "source_page": 2,
+        "selected_text": "attention head",
+        "target_language": "zh-CN",
+    }
+    preview = client.post(
+        f"/api/papers/{paper_id}/selection-context",
+        json=preview_request,
+    ).json()
+    assert [item["translation"] for item in preview["glossary_terms"]] == [
+        "注意力头"
+    ]
+    assert client.post(
+        f"/api/papers/{paper_id}/selection-context",
+        json={**preview_request, "target_language": "en"},
+    ).json()["glossary_terms"] == []
+    assert fake_model.call_count == 0
+
+    answer_request = {
+        "query": "翻译当前选中的论文原文",
+        "task": "translate",
+        "anchor": {"source_page": 2, "selected_text": "attention head"},
+    }
+    first = client.post(f"/api/papers/{paper_id}/answer", json=answer_request)
+    assert first.status_code == 200
+    assert [item.translation for item in fake_model.received_glossary_terms] == [
+        "注意力头"
+    ]
+    record = history_store.list_records(paper_id)[0]
+    assert record.glossary_signature
+    assert client.post(
+        f"/api/papers/{paper_id}/answer", json=answer_request
+    ).json()["cache_hit"] is True
+    assert fake_model.call_count == 1
+
+    client.post(
+        f"/api/papers/{paper_id}/glossary",
+        json={"source": "unrelated term", "translation": "无关术语"},
+    )
+    assert client.post(
+        f"/api/papers/{paper_id}/answer", json=answer_request
+    ).json()["cache_hit"] is True
+    assert fake_model.call_count == 1
+
+    assert client.delete(
+        f"/api/papers/{paper_id}/glossary/{matched_entry['id']}"
+    ).status_code == 200
+    after_deletion = client.post(
+        f"/api/papers/{paper_id}/answer", json=answer_request
+    )
+    assert after_deletion.json()["cache_hit"] is False
+    assert fake_model.received_glossary_terms == []
+    assert fake_model.call_count == 2
+
+    client.post(
+        f"/api/papers/{paper_id}/glossary",
+        json={"source": "attention head", "translation": "注意机制头"},
+    )
+    after_change = client.post(
+        f"/api/papers/{paper_id}/answer", json=answer_request
+    )
+    assert after_change.json()["cache_hit"] is False
+    assert [item.translation for item in fake_model.received_glossary_terms] == [
+        "注意机制头"
+    ]
+    assert fake_model.call_count == 3
 
 
 def test_translation_request_requires_a_source_anchor(tmp_path: Path) -> None:

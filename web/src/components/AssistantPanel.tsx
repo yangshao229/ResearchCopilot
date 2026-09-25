@@ -28,6 +28,7 @@ import {
   type SelectionContextPreview,
 } from "../api";
 import type { PdfSelection } from "./PdfReader";
+import GlossaryManager from "./GlossaryManager";
 import {
   EvidenceView,
   HistoryCard,
@@ -105,6 +106,7 @@ export default function AssistantPanel({
     useState<string | null>(null);
   const [isLoadingSelectionPreview, setIsLoadingSelectionPreview] =
     useState(false);
+  const [glossaryRevision, setGlossaryRevision] = useState(0);
 
   useEffect(() => {
     let isCurrent = true;
@@ -219,7 +221,12 @@ export default function AssistantPanel({
     }
 
     setIsLoadingSelectionPreview(true);
-    previewSelectionContext(paper.id, selection.sourcePage, selection.text)
+    previewSelectionContext(
+      paper.id,
+      selection.sourcePage,
+      selection.text,
+      languagePolicy.translation_target,
+    )
       .then((preview) => {
         if (isCurrent) setSelectionPreview(preview);
       })
@@ -236,7 +243,13 @@ export default function AssistantPanel({
     return () => {
       isCurrent = false;
     };
-  }, [paper.id, selection?.sourcePage, selection?.text]);
+  }, [
+    paper.id,
+    selection?.sourcePage,
+    selection?.text,
+    languagePolicy.translation_target,
+    glossaryRevision,
+  ]);
 
   useEffect(() => {
     setIsLoadingStructure(true);
@@ -697,6 +710,13 @@ export default function AssistantPanel({
                       </>
                     )}
                   </details>
+                  <p className="selection-context-note">
+                    本次命中术语：{selectionPreview.glossary_terms.length === 0
+                      ? "无"
+                      : selectionPreview.glossary_terms.map(
+                          (entry) => `${entry.source} → ${entry.translation}`,
+                        ).join("；")}
+                  </p>
                   <button
                     type="button"
                     disabled={isBusy || isLoadingLanguagePolicy}
@@ -732,6 +752,13 @@ export default function AssistantPanel({
               </button>
             </section>
           )}
+
+          <GlossaryManager
+            paperId={paper.id}
+            targetLanguage={languagePolicy.translation_target}
+            selectionText={selection?.text ?? ""}
+            onChange={() => setGlossaryRevision((revision) => revision + 1)}
+          />
 
           <div className="mode-picker" aria-label="检索方式">
             <button

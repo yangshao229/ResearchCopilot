@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from research_copilot.domain import GlossaryEntry
+
 
 ContextMethod = Literal["paragraph", "page_window", "selection_only"]
 MAX_CONTEXT_CHARS = 2400
@@ -19,6 +21,7 @@ class SelectionContextPreview(BaseModel):
     context_text: str
     method: ContextMethod
     note: str
+    glossary_terms: list[GlossaryEntry] = Field(default_factory=list)
 
 
 def build_selection_context(

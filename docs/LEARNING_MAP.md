@@ -371,3 +371,21 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：缓存键是什么、为什么论文/会话/原文页码/上下文/语言/模型必须共同决定复用、旧记录的兼容默认值、提示版本怎样使缓存失效、为什么失败结果不可缓存、服务端与前端如何表达“未调用 API”、为什么强制重译只影响本次请求。
 
 验证结果：完整测试 `88 passed`；前端 TypeScript 与生产构建通过；真实 `sample.pdf` 第 2 页上下文定位通过。未调用真实 DeepSeek，详细结果见 [M6.5.3 验收](M6_5_3_VALIDATION.md)。
+
+## M6.5.4：论文级人工术语表
+
+设计依据：[术语表开源产品拆解](research/2026-09-26-paper-glossary.md)。
+
+新增文件：
+
+- `docs/research/2026-09-26-paper-glossary.md`
+- `docs/M6_5_4_VALIDATION.md`
+- `src/research_copilot/paper_glossary.py`
+- `tests/test_paper_glossary.py`
+- `web/src/components/GlossaryManager.tsx`
+
+重要修改：`domain.py`、`selection_context.py`、`reading_history.py`、`reading_service.py`、`paper_answer_service.py`、`web_app.py`、`test_paper_answer_service.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`App.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`、`LEARNING_MAP.md`。
+
+以后学习：领域模型与独立 JSON 存储、输入校验、英文词边界与术语匹配排序、只发送命中项的隐私边界、翻译提示中“用户译名偏好”和“论文证据”的区别、术语快照哈希与缓存失效、前后端状态同步、如何用假模型验证请求而不花 API 费用。
+
+验证结果：完整测试 `94 passed`；前端 TypeScript 与生产构建通过；真实 `sample.pdf` 第 2 页术语匹配与页面展开检查通过。未调用真实 DeepSeek，详细结果见 [M6.5.4 验收](M6_5_4_VALIDATION.md)。

@@ -10,7 +10,7 @@ from research_copilot.paper_answer_service import (
     ModelNotConfiguredError,
     PaperAnswerService,
 )
-from research_copilot.domain import LanguagePolicy
+from research_copilot.domain import GlossaryEntry, LanguagePolicy
 
 
 class FakeSearchService:
@@ -38,6 +38,7 @@ class FakeAnswerModel:
         self.received_language: LanguagePolicy | None = None
         self.received_task = "question"
         self.received_task_context = ""
+        self.received_glossary_terms = []
 
     def generate(
         self,
@@ -46,11 +47,13 @@ class FakeAnswerModel:
         language: LanguagePolicy | None = None,
         task="question",
         task_context="",
+        glossary_terms=None,
     ) -> ModelAnswerDraft:
         self.received_evidence = evidence
         self.received_language = language
         self.received_task = task
         self.received_task_context = task_context
+        self.received_glossary_terms = glossary_terms or []
         return self.draft
 
 
@@ -159,6 +162,38 @@ def test_translation_uses_only_direct_selection_evidence_and_context() -> None:
     assert model.received_task == "translate"
     assert "A sentence before." in model.received_task_context
     assert answer.citations[0].source_page == 2
+
+
+def test_translation_prompt_uses_matched_glossary_as_preferences_not_evidence() -> None:
+    term = GlossaryEntry(
+        id="term-1",
+        source="attention head",
+        translation="注意力头",
+        target_language="zh-CN",
+    )
+    evidence = [
+        Evidence(
+            evidence_id=1,
+            source_page=2,
+            chunk_index=0,
+            text="An attention head mixes information.",
+            score=1.0,
+        )
+    ]
+    prompt = DeepSeekAnswerModel._build_input(
+        "翻译选区",
+        evidence,
+        task="translate",
+        task_context="A sentence of surrounding context.",
+        glossary_terms=[term],
+    )
+
+    assert '"source": "attention head"' in prompt
+    assert '"translation": "注意力头"' in prompt
+    assert "术语映射" in prompt
+    assert "不是指令" in prompt
+    assert "[E1 | PDF 第 2 页]" in prompt
+    assert "注意力头" not in evidence[0].text
 
 
 def test_answer_fails_closed_when_model_cites_unknown_evidence() -> None:
