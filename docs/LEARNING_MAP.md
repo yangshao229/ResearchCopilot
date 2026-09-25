@@ -307,3 +307,18 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：领域模型与传输模型的区别、Pydantic 组合模型、服务编排、依赖倒置、兼容旧接口的渐进重构、缓存键与失效、可重入锁、并发写入、唯一临时文件与原子替换、React 容器组件与展示组件、为什么架构重整应先保持行为不变。
 
 验证结果：既有功能未改变；统一上下文已经成为问答编排入口；同一论文结构只解析一次并在文件变化后失效；并发写入不会丢阅读记录；后端 `70 passed`，前端 TypeScript 与生产构建通过。下一小步是在这条统一管线上增加章节范围解析和限定检索，而不是创建另一套检索流程。详细结果见 [M6.4 架构基线验收](M6_4_FOUNDATION_VALIDATION.md)。
+
+## M6.4：章节感知检索
+
+设计依据：[章节感知检索开源产品拆解](research/2026-09-25-section-aware-retrieval.md)。
+
+新增文件：
+
+- `src/research_copilot/section_scope.py`
+- `tests/test_section_scope.py`
+
+重要修改：`domain.py`、`paper_search.py`、`paper_search_service.py`、`paper_answer_service.py`、`reading_service.py`、`reading_history.py`、`web_app.py`、`test_paper_search.py`、`api.ts`、`AssistantPanel.tsx`、`AssistantViews.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`。
+
+以后学习：如何从自然语言识别章节意图、文档层级树、同级标题定义章节边界、页码过滤为何比从 Top-k 结果猜章节可靠、模糊匹配的回退策略、HTTP 响应头如何保持旧 JSON 接口兼容、检索范围怎样保存到阅读记录。
+
+实现结果：自动章节识别优先用 PDF 书签或保守推断的标题；章节内容限定到起始页和下一同级/上级标题之前；没有结果时提示用户改用全文；用户可选全文。未完成真实论文运行验收前，不将本阶段标记为最终通过。详细结果见 [M6.4 章节检索验收](M6_4_VALIDATION.md)。

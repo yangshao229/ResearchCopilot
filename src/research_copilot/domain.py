@@ -26,6 +26,8 @@ ReadingTask = Literal[
     "summarize",
 ]
 ScopeKind = Literal["full_paper", "section", "selection"]
+ScopeResolution = Literal["full_paper", "matched", "fallback"]
+ScopePreference = Literal["auto", "full_paper"]
 OutputLanguage = Literal["follow_question", "zh-CN", "en"]
 
 
@@ -49,9 +51,11 @@ class ReadingScope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: ScopeKind = "full_paper"
+    resolution: ScopeResolution = "full_paper"
     section_title: str = ""
     start_page: int | None = Field(default=None, ge=1)
     end_page: int | None = Field(default=None, ge=1)
+    note: str = ""
 
 
 class ReadingContext(BaseModel):
@@ -62,6 +66,7 @@ class ReadingContext(BaseModel):
     query: str
     task: ReadingTask = "question"
     search_mode: SearchMode = "hybrid"
+    scope_preference: ScopePreference = "auto"
     anchor: ReadingAnchor | None = None
     scope: ReadingScope = Field(default_factory=ReadingScope)
     language: LanguagePolicy = Field(default_factory=LanguagePolicy)
@@ -107,6 +112,7 @@ class PaperAnswer(BaseModel):
     provider: str
     model: str
     history_id: str | None = None
+    scope: ReadingScope = Field(default_factory=ReadingScope)
 
 
 class ReadingRecord(BaseModel):
@@ -126,6 +132,7 @@ class ReadingRecord(BaseModel):
     uncertainty: str
     provider: str
     model: str
+    scope: ReadingScope = Field(default_factory=ReadingScope)
     confirmed: bool = False
     personal_note: str = ""
     category: ReadingCategory = "unclassified"

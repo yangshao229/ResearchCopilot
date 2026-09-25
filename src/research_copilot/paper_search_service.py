@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from research_copilot.domain import SearchHit, SearchMode
+from research_copilot.domain import ReadingScope, SearchHit, SearchMode
 from research_copilot.paper_search import (
     hybrid_search_page_data,
     search_page_data,
@@ -33,6 +33,7 @@ class PaperSearchService:
         query: str,
         mode: SearchMode,
         limit: int = 5,
+        scope: ReadingScope | None = None,
     ) -> list[SearchHit]:
         page_data_path = self._ensure_page_data(pdf_path, paper_id)
 
@@ -41,6 +42,7 @@ class PaperSearchService:
                 page_data_path,
                 query,
                 limit=limit,
+                scope=scope,
             )
         elif mode == "semantic":
             raw_results = semantic_search_page_data(
@@ -48,6 +50,7 @@ class PaperSearchService:
                 query,
                 limit=limit,
                 embedding_model=self._get_embedding_model(),
+                scope=scope,
             )
         else:
             raw_results = hybrid_search_page_data(
@@ -55,6 +58,7 @@ class PaperSearchService:
                 query,
                 limit=limit,
                 embedding_model=self._get_embedding_model(),
+                scope=scope,
             )
 
         normalized_results: list[SearchHit] = []

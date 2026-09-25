@@ -5,6 +5,7 @@ import {
   type Paper,
   type PaperCardPreview,
   type PaperStructure,
+  type ReadingScope,
   type ReadingCategory,
   type ReadingRecord,
   type SearchMode,
@@ -26,6 +27,7 @@ const CATEGORY_OPTIONS: Array<{ value: ReadingCategory; label: string }> = [
 export type CompletedSearch = {
   query: string;
   mode: SearchMode;
+  scope: ReadingScope;
 };
 
 type HistoryCardProps = {
@@ -219,12 +221,14 @@ function rankExplanation(result: SearchResult): string {
 type EvidenceViewProps = {
   completedSearch: CompletedSearch | null;
   results: SearchResult[];
+  onUseFullPaper: () => void;
   onNavigateToPage: (pageNumber: number) => void;
 };
 
 export function EvidenceView({
   completedSearch,
   results,
+  onUseFullPaper,
   onNavigateToPage,
 }: EvidenceViewProps) {
   return (
@@ -239,6 +243,9 @@ export function EvidenceView({
               : completedSearch.mode === "semantic"
                 ? "语义检索按意思寻找相关段落，分数用于比较本次结果的相对顺序。"
                 : "关键词检索按问题中的词语统计命中次数。"}
+          </p>
+          <p className="outline-warning" role="status">
+            {completedSearch.scope.note || "全文检索。"}
           </p>
           {results.length > 0 ? (
             <ol className="evidence-list">
@@ -265,7 +272,16 @@ export function EvidenceView({
           ) : (
             <div className="empty-conversation">
               <span>没有找到可用证据</span>
-              <p>换一种问法，或切换关键词与语义检索再试一次。</p>
+              <p>
+                {completedSearch.scope.kind === "section"
+                  ? "该章节范围内没有命中证据。可以扩大到全文，或换一种问法。"
+                  : "换一种问法，或切换关键词与语义检索再试一次。"}
+              </p>
+              {completedSearch.scope.kind === "section" && (
+                <button type="button" onClick={onUseFullPaper}>
+                  改为全文检索
+                </button>
+              )}
             </div>
           )}
         </>

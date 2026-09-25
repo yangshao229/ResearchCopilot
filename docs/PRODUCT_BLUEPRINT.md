@@ -83,7 +83,7 @@ ResearchCopilot 不按按钮堆叠功能。所有能力必须接入一条统一�
 
 解析器、检索器、重排序器、翻译/回答模型和存储方式都是可替换实现，不成为新的业务中心。任何新功能必须先说明它复用哪些核心对象；如果要增加第九种核心对象，必须先更新蓝图并解释必要性。
 
-当前落地状态（2026-09-25）：`ReadingContext`、`ReadingAnchor`、`ReadingScope`、`LanguagePolicy`、`SearchHit`、`Evidence`、`PaperAnswer` 和 `ReadingRecord` 已集中到统一领域模型；网页路由只负责 HTTP 输入输出，论文资料管理、结构解析缓存和一次阅读任务的编排分别由独立服务承担。后续章节检索与双语能力必须扩展这些对象和服务，不再新建平行问答流程。
+当前落地状态（2026-09-25）：`ReadingContext`、`ReadingAnchor`、`ReadingScope`、`LanguagePolicy`、`SearchHit`、`Evidence`、`PaperAnswer` 和 `ReadingRecord` 已集中到统一领域模型；网页路由只负责 HTTP 输入输出，论文资料管理、结构解析缓存和一次阅读任务的编排分别由独立服务承担。章节意图已复用 `ReadingContext.scope`，解析失败会明确回退全文。实现与兼容取舍见 [M6.4 章节检索拆解](research/2026-09-25-section-aware-retrieval.md)。
 
 ### 横切基础能力
 

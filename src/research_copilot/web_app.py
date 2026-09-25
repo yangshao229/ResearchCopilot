@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from urllib.parse import unquote
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -21,6 +22,7 @@ from research_copilot.domain import (
     ReadingRecord,
     SearchHit,
     SearchMode,
+    ScopePreference,
 )
 from research_copilot.paper_answer_service import (
     AnswerGenerationError,
@@ -54,6 +56,7 @@ class PaperSearchRequest(BaseModel):
     mode: SearchMode = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
     session_id: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]+$")
+    scope_preference: ScopePreference = "auto"
 
     @field_validator("query")
     @classmethod
@@ -69,6 +72,7 @@ class PaperSearchRequest(BaseModel):
             session_id=self.session_id,
             query=self.query,
             search_mode=self.mode,
+            scope_preference=self.scope_preference,
         )
 
 
@@ -136,6 +140,7 @@ def create_app(
         ],
         allow_methods=["GET", "POST", "PATCH"],
         allow_headers=["*"],
+        expose_headers=["X-Reading-Scope"],
     )
 
     @app.get("/api/health")
@@ -244,6 +249,7 @@ def create_app(
     def search_paper(
         paper_id: str,
         request: PaperSearchRequest,
+        response: Response,
     ) -> list[SearchHit]:
         try:
             paper_path = library.get_paper_path(paper_id)
@@ -253,13 +259,16 @@ def create_app(
                 detail="Paper not found.",
             ) from error
 
-        return searcher.search(
+        context = request.to_reading_context(paper_id)
+        results, scope = reader.search(
             paper_path,
-            paper_id,
-            request.query,
-            request.mode,
+            context,
             limit=request.limit,
         )
+        response.headers["X-Reading-Scope"] = json.dumps(
+            scope.model_dump(), ensure_ascii=True
+        )
+        return [SearchHit.model_validate(result) for result in results]
 
     @app.post(
         "/api/papers/{paper_id}/answer",

@@ -11,6 +11,7 @@ from research_copilot.domain import (
     PaperAnswer,
     ReadingCategory,
     ReadingRecord,
+    ReadingScope,
     SearchMode,
 )
 from research_copilot.storage import (
@@ -50,6 +51,7 @@ class ReadingHistoryStore:
         search_mode: SearchMode,
         answer: PaperAnswer,
         session_id: str = "default",
+        scope: ReadingScope | None = None,
     ) -> ReadingRecord:
         with self._lock:
             record = ReadingRecord(
@@ -67,6 +69,7 @@ class ReadingHistoryStore:
                 uncertainty=answer.uncertainty,
                 provider=answer.provider,
                 model=answer.model,
+                scope=scope or answer.scope,
             )
             records = self.list_records(paper_id)
             records.insert(0, record)
@@ -148,6 +151,7 @@ class ReadingHistoryStore:
             for citation in record.citations
         ) or "无已验证引用。"
         note = record.personal_note or "（尚未填写个人备注）"
+        scope_note = record.scope.note or "全文"
         return (
             "---\n"
             f"source_pdf: {json.dumps(record.paper_name, ensure_ascii=False)}\n"
@@ -155,6 +159,7 @@ class ReadingHistoryStore:
             f"created_at: {record.created_at}\n"
             "review_status: confirmed\n"
             f"model: {json.dumps(record.model, ensure_ascii=False)}\n"
+            f"reading_scope: {json.dumps(scope_note, ensure_ascii=False)}\n"
             "---\n\n"
             f"# {record.question}\n\n"
             "## AI 回答\n\n"

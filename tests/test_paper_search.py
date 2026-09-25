@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from research_copilot.page_store import save_page_data
+from research_copilot.domain import ReadingScope
 from research_copilot.paper_search import (
     search_page_data,
     semantic_search_page_data,
@@ -49,6 +50,41 @@ def test_search_page_data_returns_ranked_page_citations(
         (2, 2),
         (1, 1),
     ]
+
+
+def test_search_page_data_filters_pages_to_resolved_section(
+    tmp_path: Path,
+) -> None:
+    page_data_path = tmp_path / "paper.json"
+    save_page_data(
+        {
+            "source_pdf": "paper.pdf",
+            "pages": [
+                {"source_page": 1, "text": "shared term from introduction"},
+                {"source_page": 2, "text": "shared term from method"},
+                {"source_page": 3, "text": "shared term from results"},
+            ],
+        },
+        page_data_path,
+    )
+
+    results = search_page_data(
+        page_data_path,
+        "shared term",
+        chunk_size=100,
+        overlap=0,
+        limit=5,
+        scope=ReadingScope(
+            kind="section",
+            resolution="matched",
+            section_title="2 Method",
+            start_page=2,
+            end_page=2,
+        ),
+    )
+
+    assert results
+    assert {result["source_page"] for result in results} == {2}
 
 
 class PageAwareFakeEmbeddingModel(EmbeddingModel):

@@ -19,6 +19,7 @@ import {
   type ReadingRecord,
   type SearchMode,
   type SearchResult,
+  type ScopePreference,
 } from "../api";
 import type { PdfSelection } from "./PdfReader";
 import {
@@ -55,6 +56,8 @@ export default function AssistantPanel({
   const [activeTab, setActiveTab] = useState<AssistantTab>("outline");
   const [question, setQuestion] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
+  const [scopePreference, setScopePreference] =
+    useState<ScopePreference>("auto");
   const [completedSearch, setCompletedSearch] =
     useState<CompletedSearch | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -301,16 +304,50 @@ export default function AssistantPanel({
     setIsSearching(true);
 
     try {
-      const searchResults = await searchPaper(
+      const searchExecution = await searchPaper(
         paper.id,
         query,
         searchMode,
+        5,
+        scopePreference,
       );
-      setResults(searchResults);
-      setCompletedSearch({ query, mode: searchMode });
+      setResults(searchExecution.results);
+      setCompletedSearch({
+        query,
+        mode: searchMode,
+        scope: searchExecution.scope,
+      });
       setActiveTab("evidence");
     } catch (reason: unknown) {
       setError(reason instanceof Error ? reason.message : "证据检索失败。");
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const runFullPaperSearch = async () => {
+    const query = completedSearch?.query ?? question.trim();
+    if (!query || isBusy) return;
+
+    setScopePreference("full_paper");
+    setError(null);
+    setIsSearching(true);
+    try {
+      const searchExecution = await searchPaper(
+        paper.id,
+        query,
+        searchMode,
+        5,
+        "full_paper",
+      );
+      setResults(searchExecution.results);
+      setCompletedSearch({
+        query,
+        mode: searchMode,
+        scope: searchExecution.scope,
+      });
+    } catch (reason: unknown) {
+      setError(reason instanceof Error ? reason.message : "全文检索失败。");
     } finally {
       setIsSearching(false);
     }
@@ -331,10 +368,16 @@ export default function AssistantPanel({
         query,
         searchMode,
         activeSessionId,
+        5,
+        scopePreference,
       );
       setAnswer(paperAnswer);
       setResults(paperAnswer.evidence);
-      setCompletedSearch({ query, mode: searchMode });
+      setCompletedSearch({
+        query,
+        mode: searchMode,
+        scope: paperAnswer.scope,
+      });
       setActiveTab("ask");
       const [sessionHistory, paperHistory] = await Promise.all([
         listReadingHistory(paper.id, activeSessionId),
@@ -468,6 +511,11 @@ export default function AssistantPanel({
                 </span>
               </div>
               <p className="answer-direct">{answer.answer}</p>
+              {answer.scope.note && (
+                <p className="outline-warning" role="status">
+                  {answer.scope.note}
+                </p>
+              )}
               <div className="answer-section">
                 <h3>解释</h3>
                 <p>{answer.explanation}</p>
@@ -571,6 +619,7 @@ export default function AssistantPanel({
         <EvidenceView
           completedSearch={completedSearch}
           results={results}
+          onUseFullPaper={() => void runFullPaperSearch()}
           onNavigateToPage={onNavigateToPage}
         />
       ) : activeTab === "history" ? (
@@ -640,6 +689,19 @@ export default function AssistantPanel({
         <p className="send-scope">
           结构问题只在本地处理；内容问题发送给 DeepSeek 的只有你的问题和最多 5 段本地证据，不会发送整篇论文。
         </p>
+        <label className="scope-picker">
+          检索范围
+          <select
+            aria-label="检索范围"
+            value={scopePreference}
+            onChange={(event) =>
+              setScopePreference(event.target.value as ScopePreference)
+            }
+          >
+            <option value="auto">自动识别问题中的章节</option>
+            <option value="full_paper">全文</option>
+          </select>
+        </label>
         <textarea
           id="question"
           value={question}

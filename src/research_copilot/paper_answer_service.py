@@ -10,6 +10,7 @@ from research_copilot.domain import (
     AnswerCitation,
     Evidence,
     PaperAnswer,
+    ReadingScope,
     SearchHit,
     SearchMode,
 )
@@ -55,6 +56,7 @@ class SearchService(Protocol):
         query: str,
         mode: SearchMode,
         limit: int = 5,
+        scope: ReadingScope | None = None,
     ) -> list[SearchHit | Mapping[str, object]]: ...
 
 
@@ -217,14 +219,25 @@ class PaperAnswerService:
         question: str,
         mode: SearchMode,
         limit: int = 5,
+        scope: ReadingScope | None = None,
     ) -> PaperAnswer:
-        raw_evidence = self.search_service.search(
-            pdf_path,
-            paper_id,
-            question,
-            mode,
-            limit=limit,
-        )
+        if scope is None:
+            raw_evidence = self.search_service.search(
+                pdf_path,
+                paper_id,
+                question,
+                mode,
+                limit=limit,
+            )
+        else:
+            raw_evidence = self.search_service.search(
+                pdf_path,
+                paper_id,
+                question,
+                mode,
+                limit=limit,
+                scope=scope,
+            )
         evidence: list[Evidence] = []
         for index, item in enumerate(raw_evidence, start=1):
             hit = (
@@ -249,6 +262,7 @@ class PaperAnswerService:
                 evidence=[],
                 provider=self.answer_model.provider_name,
                 model=self.answer_model.model_name,
+                scope=scope or ReadingScope(),
             )
 
         draft = self.answer_model.generate(question, evidence)
@@ -280,6 +294,7 @@ class PaperAnswerService:
                 evidence=evidence,
                 provider=self.answer_model.provider_name,
                 model=self.answer_model.model_name,
+                scope=scope or ReadingScope(),
             )
 
         return PaperAnswer(
@@ -291,4 +306,5 @@ class PaperAnswerService:
             evidence=evidence,
             provider=self.answer_model.provider_name,
             model=self.answer_model.model_name,
+            scope=scope or ReadingScope(),
         )

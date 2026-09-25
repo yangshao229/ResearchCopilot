@@ -47,6 +47,15 @@ export type PaperReadingGuide = {
 };
 
 export type SearchMode = "keyword" | "semantic" | "hybrid";
+export type ScopePreference = "auto" | "full_paper";
+export type ReadingScope = {
+  kind: "full_paper" | "section" | "selection";
+  resolution: "full_paper" | "matched" | "fallback";
+  section_title: string;
+  start_page: number | null;
+  end_page: number | null;
+  note: string;
+};
 export type ReadingCategory =
   | "unclassified"
   | "summary"
@@ -91,6 +100,7 @@ export type PaperAnswer = {
   provider: string;
   model: string;
   history_id: string | null;
+  scope: ReadingScope;
 };
 
 export type ReadingRecord = {
@@ -111,6 +121,12 @@ export type ReadingRecord = {
   confirmed: boolean;
   personal_note: string;
   category: ReadingCategory;
+  scope: ReadingScope;
+};
+
+export type PaperSearchExecution = {
+  results: SearchResult[];
+  scope: ReadingScope;
 };
 
 export type PaperCardPreview = {
@@ -228,7 +244,8 @@ export async function searchPaper(
   query: string,
   mode: SearchMode,
   limit = 5,
-): Promise<SearchResult[]> {
+  scopePreference: ScopePreference = "auto",
+): Promise<PaperSearchExecution> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/search`,
     {
@@ -236,7 +253,12 @@ export async function searchPaper(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, mode, limit }),
+      body: JSON.stringify({
+        query,
+        mode,
+        limit,
+        scope_preference: scopePreference,
+      }),
     },
   );
 
@@ -244,7 +266,21 @@ export async function searchPaper(
     throw await responseError(response, "证据检索失败");
   }
 
-  return (await response.json()) as SearchResult[];
+  const scopeHeader = response.headers.get("X-Reading-Scope");
+  const scope = scopeHeader
+    ? (JSON.parse(scopeHeader) as ReadingScope)
+    : {
+        kind: "full_paper" as const,
+        resolution: "full_paper" as const,
+        section_title: "",
+        start_page: null,
+        end_page: null,
+        note: "全文检索。",
+      };
+  return {
+    results: (await response.json()) as SearchResult[],
+    scope,
+  };
 }
 
 export async function answerPaper(
@@ -253,6 +289,7 @@ export async function answerPaper(
   mode: SearchMode,
   sessionId = "default",
   limit = 5,
+  scopePreference: ScopePreference = "auto",
 ): Promise<PaperAnswer> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/answer`,
@@ -261,7 +298,13 @@ export async function answerPaper(
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ query, mode, limit, session_id: sessionId }),
+      body: JSON.stringify({
+        query,
+        mode,
+        limit,
+        session_id: sessionId,
+        scope_preference: scopePreference,
+      }),
     },
   );
 
