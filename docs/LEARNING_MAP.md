@@ -356,3 +356,18 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：空白归一化与偏移映射、PDF 文本层为何不等于段落结构、上下文窗口与长度限制、前端本地预览和显式外部调用的隐私边界、直接证据与 RAG 检索证据的区别、`ReadingContext` 的 task/anchor 如何流经 API/服务/模型/历史记录、Pydantic 对旧 JSON 的兼容默认值。
 
 验证结果：完整测试 `88 passed`；前端 TypeScript 与生产构建通过；`sample.pdf` 第 2 页本地恢复出选区上下文。不调用真实 DeepSeek/Hugging Face。详细结果见 [M6.5.2 验收](M6_5_2_VALIDATION.md)。
+
+## M6.5.3：选区翻译缓存与显式重译
+
+设计依据：[选区翻译复用开源产品拆解](research/2026-09-26-selection-translation-cache.md)。
+
+新增文件：
+
+- `docs/research/2026-09-26-selection-translation-cache.md`
+- `docs/M6_5_3_VALIDATION.md`
+
+重要修改：`domain.py`、`reading_history.py`、`reading_service.py`、`web_app.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`、`LEARNING_MAP.md`。
+
+以后学习：缓存键是什么、为什么论文/会话/原文页码/上下文/语言/模型必须共同决定复用、旧记录的兼容默认值、提示版本怎样使缓存失效、为什么失败结果不可缓存、服务端与前端如何表达“未调用 API”、为什么强制重译只影响本次请求。
+
+验证结果：完整测试 `88 passed`；前端 TypeScript 与生产构建通过；真实 `sample.pdf` 第 2 页上下文定位通过。未调用真实 DeepSeek，详细结果见 [M6.5.3 验收](M6_5_3_VALIDATION.md)。

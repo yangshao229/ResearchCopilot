@@ -59,6 +59,7 @@ class ReadingHistoryStore:
         task: ReadingTask = "question",
         anchor: ReadingAnchor | None = None,
         context_text: str = "",
+        prompt_version: str = "",
     ) -> ReadingRecord:
         with self._lock:
             record = ReadingRecord(
@@ -71,6 +72,7 @@ class ReadingHistoryStore:
                 session_id=session_id,
                 anchor=anchor,
                 context_text=context_text,
+                prompt_version=prompt_version,
                 search_mode=search_mode,
                 answer=answer.answer,
                 explanation=answer.explanation,

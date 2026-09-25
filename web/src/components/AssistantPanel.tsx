@@ -446,6 +446,7 @@ export default function AssistantPanel({
   const runAnswer = async (
     task: "question" | "translate" = "question",
     anchor?: ReadingAnchor,
+    refreshTranslation = false,
   ) => {
     const query = task === "translate" ? "翻译当前选中的论文原文" : question.trim();
     if (!query || isBusy) {
@@ -466,6 +467,7 @@ export default function AssistantPanel({
         languagePolicy,
         task,
         anchor,
+        refreshTranslation,
       );
       setAnswer(paperAnswer);
       setResults(paperAnswer.evidence);
@@ -487,6 +489,10 @@ export default function AssistantPanel({
       setIsAnswering(false);
     }
   };
+
+  const cachedTranslationAnchor = answer?.cache_hit
+    ? history.find((item) => item.id === answer.history_id)?.anchor
+    : undefined;
 
   return (
     <aside className="assistant-panel">
@@ -603,10 +609,26 @@ export default function AssistantPanel({
                       : "论文回答"}
                 </strong>
                 <span>
-                  {answer.provider === "local" ? "未调用 API" : answer.model}
+                  {answer.cache_hit
+                    ? "已复用本地译文 · 未调用 API"
+                    : answer.provider === "local"
+                      ? "未调用 API"
+                      : answer.model}
                 </span>
               </div>
               <p className="answer-direct">{answer.answer}</p>
+              {answer.cache_hit && cachedTranslationAnchor && (
+                <button
+                  type="button"
+                  className="translation-refresh"
+                  disabled={isBusy}
+                  onClick={() =>
+                    void runAnswer("translate", cachedTranslationAnchor, true)
+                  }
+                >
+                  重新翻译（将调用 API）
+                </button>
+              )}
               {answer.scope.note && (
                 <p className="outline-warning" role="status">
                   {answer.scope.note}
@@ -657,7 +679,7 @@ export default function AssistantPanel({
               {selectionPreview && (
                 <div className="selection-context-preview">
                   <p className="selection-context-note">
-                    将发送给 DeepSeek：第 {selectionPreview.source_page} 页、
+                    若没有可复用译文，将发送给 DeepSeek：第 {selectionPreview.source_page} 页、
                     {languagePolicy.translation_target === "zh-CN" ? "简体中文" : "English"}译文、
                     {selectionPreview.method === "selection_only"
                       ? "仅精确选区"
@@ -686,7 +708,7 @@ export default function AssistantPanel({
                       })
                     }
                   >
-                    {isAnswering ? "正在翻译…" : "发送选区翻译"}
+                    {isAnswering ? "正在翻译…" : "翻译选区（优先复用本地译文）"}
                   </button>
                 </div>
               )}

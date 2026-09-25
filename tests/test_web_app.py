@@ -401,14 +401,19 @@ class AnswerApiFakeModel:
     provider_name = "fake"
     model_name = "fake-answer-model"
 
+    def __init__(self) -> None:
+        self.call_count = 0
+        self.insufficient_evidence = False
+
     def generate(
         self, question, evidence, language=None, task="question", task_context=""
     ):
+        self.call_count += 1
         return ModelAnswerDraft(
             answer="Transformer 不使用循环结构，因此能并行处理序列位置。",
             explanation="证据明确对比了循环网络的顺序计算限制。",
             cited_evidence_ids=[1],
-            insufficient_evidence=False,
+            insufficient_evidence=self.insufficient_evidence,
             uncertainty="证据没有给出完整训练速度比较。",
         )
 
@@ -510,6 +515,7 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     create_test_pdf(paper_path, page_count=2)
     search_service = PaperSearchService(processed_directory)
     history_store = ReadingHistoryStore(tmp_path / "history")
+    fake_model = AnswerApiFakeModel()
     client = TestClient(
         create_app(
             paper_directory=paper_directory,
@@ -518,7 +524,7 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
             search_service=search_service,
             answer_service=PaperAnswerService(
                 search_service,
-                AnswerApiFakeModel(),
+                fake_model,
             ),
             history_store=history_store,
         )
@@ -585,6 +591,161 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     assert record["anchor"]["source_page"] == 2
     assert selected_text in record["anchor"]["selected_text"]
     assert selected_text in record["context_text"]
+    assert record["prompt_version"] == "selection-translation-v1"
+    assert answer["cache_hit"] is False
+    assert fake_model.call_count == 1
+
+    repeated = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "session_id": "default",
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+        },
+    )
+    assert repeated.status_code == 200
+    assert repeated.json()["cache_hit"] is True
+    assert repeated.json()["history_id"] == answer["history_id"]
+    assert repeated.json()["evidence"][0]["source_page"] == 2
+    assert fake_model.call_count == 1
+    assert len(history_store.list_records(paper_id)) == 1
+
+    in_english = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+            "language": {"translation_target": "en"},
+        },
+    )
+    assert in_english.status_code == 200
+    assert in_english.json()["cache_hit"] is False
+    assert fake_model.call_count == 2
+
+    new_session = client.post(
+        f"/api/papers/{paper_id}/sessions", json={"title": "二次精读"}
+    ).json()
+    other_session = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "session_id": new_session["id"],
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+        },
+    )
+    assert other_session.json()["cache_hit"] is False
+    assert fake_model.call_count == 3
+
+    fake_model.model_name = "new-fake-answer-model"
+    other_model = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+        },
+    )
+    assert other_model.json()["cache_hit"] is False
+    assert fake_model.call_count == 4
+
+    refreshed = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+            "refresh_translation": True,
+        },
+    )
+    assert refreshed.json()["cache_hit"] is False
+    assert refreshed.json()["history_id"] != other_model.json()["history_id"]
+    assert fake_model.call_count == 5
+
+    other_page = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "task": "translate",
+            "anchor": {"source_page": 1, "selected_text": "Other page content."},
+        },
+    )
+    assert other_page.json()["cache_hit"] is False
+    assert fake_model.call_count == 6
+
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {"source_page": 1, "text": "Other page content."},
+                {
+                    "source_page": 2,
+                    "text": (
+                        "Changed context before the selection. " * 60
+                        + "The selected clause improves contextual translation. "
+                        + "Changed context after the selection. " * 60
+                    ),
+                },
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+    changed_context = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+        },
+    )
+    assert changed_context.json()["cache_hit"] is False
+    assert fake_model.call_count == 7
+
+    fake_model.insufficient_evidence = True
+    failed_request = {
+        "query": "翻译当前选中的论文原文",
+        "task": "translate",
+        "anchor": {"source_page": 2, "selected_text": "New untranslated clause."},
+    }
+    first_failure = client.post(
+        f"/api/papers/{paper_id}/answer", json=failed_request
+    )
+    second_failure = client.post(
+        f"/api/papers/{paper_id}/answer", json=failed_request
+    )
+    assert first_failure.json()["insufficient_evidence"] is True
+    assert second_failure.json()["cache_hit"] is False
+    assert fake_model.call_count == 9
+
+    fake_model.insufficient_evidence = False
+    current_record = next(
+        record
+        for record in history_store.list_records(paper_id)
+        if record.id == changed_context.json()["history_id"]
+    )
+    history_store.add_record(
+        paper_id,
+        "attention.pdf",
+        "翻译当前选中的论文原文",
+        "hybrid",
+        PaperAnswer.model_validate(changed_context.json()),
+        session_id=new_session["id"],
+        anchor=current_record.anchor,
+        context_text=current_record.context_text,
+    )
+    old_format_record = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "session_id": new_session["id"],
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+        },
+    )
+    assert old_format_record.json()["cache_hit"] is False
+    assert fake_model.call_count == 10
 
 
 def test_translation_request_requires_a_source_anchor(tmp_path: Path) -> None:
@@ -606,6 +767,12 @@ def test_translation_request_requires_a_source_anchor(tmp_path: Path) -> None:
     )
 
     assert response.status_code == 422
+
+    non_translation_refresh = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={"query": "Summarize the method", "refresh_translation": True},
+    )
+    assert non_translation_refresh.status_code == 422
 
 
 def test_paper_answer_and_history_stay_inside_selected_session(

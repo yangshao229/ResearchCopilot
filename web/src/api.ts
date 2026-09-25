@@ -130,6 +130,7 @@ export type PaperAnswer = {
   history_id: string | null;
   scope: ReadingScope;
   language: LanguagePolicy;
+  cache_hit: boolean;
 };
 
 export type ReadingRecord = {
@@ -356,6 +357,7 @@ export async function answerPaper(
   language?: LanguagePolicy,
   task: ReadingTask = "question",
   anchor?: ReadingAnchor,
+  refreshTranslation = false,
 ): Promise<PaperAnswer> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/answer`,
@@ -372,6 +374,7 @@ export async function answerPaper(
         scope_preference: scopePreference,
         task,
         ...(anchor ? { anchor } : {}),
+        ...(refreshTranslation ? { refresh_translation: true } : {}),
         ...(language ? { language } : {}),
       }),
     },

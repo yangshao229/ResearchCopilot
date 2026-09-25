@@ -68,9 +68,12 @@ class PaperSearchRequest(BaseModel):
     language: LanguagePolicy = Field(default_factory=LanguagePolicy)
     task: ReadingTask = "question"
     anchor: ReadingAnchor | None = None
+    refresh_translation: bool = False
 
     @model_validator(mode="after")
     def translation_requires_selection(self) -> "PaperSearchRequest":
+        if self.refresh_translation and self.task != "translate":
+            raise ValueError("只有翻译任务可以跳过译文缓存。")
         if self.task == "translate" and (
             self.anchor is None
             or self.anchor.source_page is None
@@ -99,6 +102,7 @@ class PaperSearchRequest(BaseModel):
             language=self.language,
             task=self.task,
             anchor=self.anchor,
+            refresh_translation=self.refresh_translation,
         )
 
 

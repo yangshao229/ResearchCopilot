@@ -5,6 +5,7 @@ from pathlib import Path
 from research_copilot.conversation_sessions import ConversationSessionStore
 from research_copilot.document_service import PaperDocumentService
 from research_copilot.domain import (
+    Evidence,
     PaperAnswer,
     ReadingAnchor,
     ReadingContext,
@@ -22,6 +23,8 @@ from research_copilot.selection_context import (
     SelectionContextPreview,
     build_selection_context,
 )
+
+TRANSLATION_PROMPT_VERSION = "selection-translation-v1"
 
 
 class ReadingService:
@@ -69,6 +72,14 @@ class ReadingService:
                     score=1.0,
                 )
             ]
+            if not context.refresh_translation:
+                cached_answer = self._cached_translation(
+                    context,
+                    selection_preview,
+                    direct_evidence[0],
+                )
+                if cached_answer is not None:
+                    return cached_answer
         is_content_question = classify_paper_question(context.query) == "content"
         scope = (
             resolve_section_scope(
@@ -121,8 +132,57 @@ class ReadingService:
                 if selection_preview is not None
                 else ""
             ),
+            prompt_version=(
+                TRANSLATION_PROMPT_VERSION if context.task == "translate" else ""
+            ),
         )
         return answer.model_copy(update={"history_id": record.id})
+
+    def _cached_translation(
+        self,
+        context: ReadingContext,
+        preview: SelectionContextPreview,
+        hit: SearchHit,
+    ) -> PaperAnswer | None:
+        model = self.answer_service.answer_model
+        for record in self.history_store.list_records(
+            context.paper_id, session_id=context.session_id
+        ):
+            if (
+                record.task != "translate"
+                or record.prompt_version != TRANSLATION_PROMPT_VERSION
+                or record.anchor is None
+                or record.anchor.source_page != preview.source_page
+                or record.anchor.selected_text != preview.selected_text
+                or record.context_text != preview.context_text
+                or record.language != context.language
+                or record.provider != model.provider_name
+                or record.model != model.model_name
+                or record.insufficient_evidence
+                or not record.answer.strip()
+                or not record.citations
+                or any(
+                    citation.source_page != preview.source_page
+                    or citation.quote != preview.selected_text
+                    for citation in record.citations
+                )
+            ):
+                continue
+            return PaperAnswer(
+                answer=record.answer,
+                explanation=record.explanation,
+                citations=record.citations,
+                insufficient_evidence=False,
+                uncertainty=record.uncertainty,
+                evidence=[Evidence(evidence_id=1, **hit.model_dump())],
+                provider=record.provider,
+                model=record.model,
+                history_id=record.id,
+                scope=record.scope,
+                language=record.language,
+                cache_hit=True,
+            )
+        return None
 
     def selection_context(
         self,

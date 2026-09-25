@@ -184,6 +184,8 @@ M6.4“章节感知检索”已通过三篇不同版式真实论文验收：Atte
 
 完成标准：自动测试通过；三篇真实论文章节范围、页码保真和无效章节全文回退通过。由于当前执行环境无法访问 Hugging Face 且没有 Embedding 模型缓存，本次未实时重跑 M4 的向量评测；既有 M4 基线和自动回归测试保留，未声称本次重新测得相同 MRR。
 
-M6.5.2 已完成：选区翻译从当前 PDF 页恢复可用上下文，请求前显示实际发送范围，并把任务、页码锚点、语言和上下文保存到既有阅读记录。后端 `88 passed`，前端构建通过；本地 `sample.pdf` 已验证，不依赖 Hugging Face 或真实模型。设计和验收见 [选区上下文翻译拆解](docs/research/2026-09-25-selection-context-translation.md) 与 [M6.5.2 验收](docs/M6_5_2_VALIDATION.md)。后续双语基础层仍有完整英文界面、原文语言检测、术语表与缓存；整篇双语阅读视图推迟到 M7 复杂解析稳定之后。
+M6.5.2 已完成：选区翻译从当前 PDF 页恢复可用上下文，请求前显示实际发送范围，并把任务、页码锚点、语言和上下文保存到既有阅读记录。后端 `88 passed`，前端构建通过；本地 `sample.pdf` 已验证，不依赖 Hugging Face 或真实模型。设计和验收见 [选区上下文翻译拆解](docs/research/2026-09-25-selection-context-translation.md) 与 [M6.5.2 验收](docs/M6_5_2_VALIDATION.md)。
+
+M6.5.3 已完成：重复选区翻译会优先复用本地已有译文，不重复调用 DeepSeek 或新增阅读记录；不同论文/会话/页码/上下文/语言策略/模型保持隔离，失败和旧版本记录不缓存。侧栏显示缓存命中并可显式重新翻译。后端完整测试 `88 passed`，前端构建通过，真实 `sample.pdf` 第 2 页上下文恢复通过；未调用真实 DeepSeek。见 [开源拆解](docs/research/2026-09-26-selection-translation-cache.md) 与 [M6.5.3 验收](docs/M6_5_3_VALIDATION.md)。下一步 M6.5 术语表需先做开源拆解，完整英文界面和原文语言检测亦待实现；整篇双语阅读视图推迟到 M7 复杂解析稳定之后。
 
 整体架构与双语取舍见 [2026-09-23 开源产品拆解](docs/research/2026-09-23-coherent-reading-architecture-and-bilingual-workflow.md)。

@@ -76,6 +76,7 @@ class ReadingContext(BaseModel):
     anchor: ReadingAnchor | None = None
     scope: ReadingScope = Field(default_factory=ReadingScope)
     language: LanguagePolicy = Field(default_factory=LanguagePolicy)
+    refresh_translation: bool = False
 
 
 class SearchHit(BaseModel):
@@ -120,6 +121,7 @@ class PaperAnswer(BaseModel):
     history_id: str | None = None
     scope: ReadingScope = Field(default_factory=ReadingScope)
     language: LanguagePolicy = Field(default_factory=LanguagePolicy)
+    cache_hit: bool = False
 
 
 class ReadingRecord(BaseModel):
@@ -134,6 +136,7 @@ class ReadingRecord(BaseModel):
     session_id: str = "default"
     anchor: ReadingAnchor | None = None
     context_text: str = ""
+    prompt_version: str = ""
     search_mode: SearchMode
     answer: str
     explanation: str

@@ -840,6 +840,21 @@ button:disabled {
   line-height: 1.7;
 }
 
+.translation-refresh {
+  margin-top: 12px;
+  border: 1px solid rgba(64, 110, 88, 0.35);
+  border-radius: 8px;
+  padding: 8px 11px;
+  color: var(--accent-strong);
+  background: #fff;
+  cursor: pointer;
+}
+
+.translation-refresh:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
 .answer-section {
   margin-top: 16px;
   padding-top: 14px;
