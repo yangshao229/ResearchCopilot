@@ -16,6 +16,7 @@ from research_copilot.conversation_sessions import (
 )
 from research_copilot.document_service import PaperDocumentService
 from research_copilot.domain import (
+    LanguagePolicy,
     PaperAnswer,
     ReadingCategory,
     ReadingContext,
@@ -43,6 +44,7 @@ from research_copilot.paper_library import (
 from research_copilot.paper_reading_guide import PaperReadingGuide
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.paper_structure import PaperStructure
+from research_copilot.language_preferences import PaperLanguagePreferenceStore
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.reading_service import ReadingService
 
@@ -51,12 +53,16 @@ DEFAULT_FRONTEND_DIRECTORY = PROJECT_ROOT / "web" / "dist"
 DEFAULT_HISTORY_DIRECTORY = PROJECT_ROOT / "artifacts" / "reading_history"
 DEFAULT_SESSION_DIRECTORY = PROJECT_ROOT / "artifacts" / "conversations"
 DEFAULT_CARD_DIRECTORY = PROJECT_ROOT / "artifacts" / "paper_cards"
+DEFAULT_LANGUAGE_PREFERENCES_DIRECTORY = (
+    PROJECT_ROOT / "artifacts" / "language_preferences"
+)
 class PaperSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=2000)
     mode: SearchMode = "hybrid"
     limit: int = Field(default=5, ge=1, le=10)
     session_id: str = Field(default="default", pattern=r"^[A-Za-z0-9_-]+$")
     scope_preference: ScopePreference = "auto"
+    language: LanguagePolicy = Field(default_factory=LanguagePolicy)
 
     @field_validator("query")
     @classmethod
@@ -73,6 +79,7 @@ class PaperSearchRequest(BaseModel):
             query=self.query,
             search_mode=self.mode,
             scope_preference=self.scope_preference,
+            language=self.language,
         )
 
 
@@ -105,6 +112,7 @@ def create_app(
     card_compiler: PaperCardCompiler | None = None,
     document_service: PaperDocumentService | None = None,
     reading_service: ReadingService | None = None,
+    language_preference_store: PaperLanguagePreferenceStore | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -121,6 +129,9 @@ def create_app(
     sessions = session_store or ConversationSessionStore(session_directory)
     cards = card_compiler or PaperCardCompiler(DEFAULT_CARD_DIRECTORY)
     documents = document_service or PaperDocumentService()
+    language_preferences = language_preference_store or PaperLanguagePreferenceStore(
+        DEFAULT_LANGUAGE_PREFERENCES_DIRECTORY
+    )
     reader = reading_service or ReadingService(
         answerer,
         history,
@@ -138,7 +149,7 @@ def create_app(
             "http://127.0.0.1:5173",
             "http://localhost:5173",
         ],
-        allow_methods=["GET", "POST", "PATCH"],
+        allow_methods=["GET", "POST", "PATCH", "PUT"],
         allow_headers=["*"],
         expose_headers=["X-Reading-Scope"],
     )
@@ -150,6 +161,31 @@ def create_app(
     @app.get("/api/papers", response_model=list[PaperSummary])
     def list_papers() -> list[PaperSummary]:
         return library.list_papers()
+
+    @app.get(
+        "/api/papers/{paper_id}/language",
+        response_model=LanguagePolicy,
+    )
+    def get_paper_language_preferences(paper_id: str) -> LanguagePolicy:
+        try:
+            library.get_paper_path(paper_id)
+            return language_preferences.get(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+
+    @app.put(
+        "/api/papers/{paper_id}/language",
+        response_model=LanguagePolicy,
+    )
+    def save_paper_language_preferences(
+        paper_id: str,
+        policy: LanguagePolicy,
+    ) -> LanguagePolicy:
+        try:
+            library.get_paper_path(paper_id)
+            return language_preferences.save(paper_id, policy)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
 
     @app.post("/api/papers/import", response_model=PaperImportResult)
     async def import_paper(request: Request) -> PaperImportResult:

@@ -4,14 +4,17 @@ import {
   answerPaper,
   createConversationSession,
   downloadPaperCard,
+  getPaperLanguagePreferences,
   getPaperReadingGuide,
   getPaperStructure,
   listConversationSessions,
   listReadingHistory,
   previewPaperCard,
   searchPaper,
+  savePaperLanguagePreferences,
   type ConversationSession,
   type Paper,
+  type LanguagePolicy,
   type PaperAnswer,
   type PaperCardPreview,
   type PaperReadingGuide,
@@ -58,6 +61,17 @@ export default function AssistantPanel({
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
   const [scopePreference, setScopePreference] =
     useState<ScopePreference>("auto");
+  const [languagePolicy, setLanguagePolicy] = useState<LanguagePolicy>({
+    explanation_language: "follow_question",
+    translation_target: "zh-CN",
+    terminology_policy: "bilingual_first_use",
+  });
+  const [languagePolicyError, setLanguagePolicyError] = useState<string | null>(
+    null,
+  );
+  const [isLoadingLanguagePolicy, setIsLoadingLanguagePolicy] =
+    useState(true);
+  const [isSavingLanguagePolicy, setIsSavingLanguagePolicy] = useState(false);
   const [completedSearch, setCompletedSearch] =
     useState<CompletedSearch | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -85,6 +99,27 @@ export default function AssistantPanel({
 
   useEffect(() => {
     let isCurrent = true;
+    setIsLoadingLanguagePolicy(true);
+    setLanguagePolicyError(null);
+    setLanguagePolicy({
+      explanation_language: "follow_question",
+      translation_target: "zh-CN",
+      terminology_policy: "bilingual_first_use",
+    });
+    getPaperLanguagePreferences(paper.id)
+      .then((preferences) => {
+        if (isCurrent) setLanguagePolicy(preferences);
+      })
+      .catch((reason: unknown) => {
+        if (isCurrent) {
+          setLanguagePolicyError(
+            reason instanceof Error ? reason.message : "论文语言偏好加载失败。",
+          );
+        }
+      })
+      .finally(() => {
+        if (isCurrent) setIsLoadingLanguagePolicy(false);
+      });
     setActiveSessionId("default");
     setHistory([]);
     setAllHistory([]);
@@ -183,6 +218,21 @@ export default function AssistantPanel({
   const activeSession = sessions.find(
     (session) => session.id === activeSessionId,
   );
+
+  const updateLanguagePolicy = async (nextPolicy: LanguagePolicy) => {
+    setLanguagePolicyError(null);
+    setIsSavingLanguagePolicy(true);
+    try {
+      const saved = await savePaperLanguagePreferences(paper.id, nextPolicy);
+      setLanguagePolicy(saved);
+    } catch (reason: unknown) {
+      setLanguagePolicyError(
+        reason instanceof Error ? reason.message : "论文语言偏好保存失败。",
+      );
+    } finally {
+      setIsSavingLanguagePolicy(false);
+    }
+  };
 
   const useSelection = (instruction: string) => {
     if (!selection) {
@@ -370,6 +420,7 @@ export default function AssistantPanel({
         activeSessionId,
         5,
         scopePreference,
+        languagePolicy,
       );
       setAnswer(paperAnswer);
       setResults(paperAnswer.evidence);
@@ -554,7 +605,11 @@ export default function AssistantPanel({
               <blockquote>{selection.text}</blockquote>
               <button
                 type="button"
-                onClick={() => useSelection("请准确翻译下面的英文原文，并保留专业术语。")}
+                onClick={() =>
+                  useSelection(
+                    `请将下面的论文原文翻译为${languagePolicy.translation_target === "zh-CN" ? "简体中文" : "English"}，并遵循当前论文的术语策略。`,
+                  )
+                }
               >
                 翻译
               </button>
@@ -702,6 +757,61 @@ export default function AssistantPanel({
             <option value="full_paper">全文</option>
           </select>
         </label>
+        <div className="language-preferences" aria-label="论文语言偏好">
+          <label>
+            回答语言
+            <select
+              value={languagePolicy.explanation_language}
+              disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
+              onChange={(event) =>
+                void updateLanguagePolicy({
+                  ...languagePolicy,
+                  explanation_language: event.target.value as LanguagePolicy["explanation_language"],
+                })
+              }
+            >
+              <option value="follow_question">跟随提问语言</option>
+              <option value="zh-CN">简体中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label>
+            翻译目标
+            <select
+              value={languagePolicy.translation_target}
+              disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
+              onChange={(event) =>
+                void updateLanguagePolicy({
+                  ...languagePolicy,
+                  translation_target: event.target.value as LanguagePolicy["translation_target"],
+                })
+              }
+            >
+              <option value="zh-CN">简体中文</option>
+              <option value="en">English</option>
+            </select>
+          </label>
+          <label>
+            术语
+            <select
+              value={languagePolicy.terminology_policy}
+              disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
+              onChange={(event) =>
+                void updateLanguagePolicy({
+                  ...languagePolicy,
+                  terminology_policy: event.target.value as LanguagePolicy["terminology_policy"],
+                })
+              }
+            >
+              <option value="bilingual_first_use">首次中英对照</option>
+              <option value="preserve_english">保留英文术语</option>
+              <option value="translate_all">尽量翻译</option>
+            </select>
+          </label>
+        </div>
+        {languagePolicyError && (
+          <p className="search-error">{languagePolicyError}</p>
+        )}
         <textarea
           id="question"
           value={question}

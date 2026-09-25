@@ -321,4 +321,21 @@ Git：`ee33940 feat: persist reviewable reading records`
 
 以后学习：如何从自然语言识别章节意图、文档层级树、同级标题定义章节边界、页码过滤为何比从 Top-k 结果猜章节可靠、模糊匹配的回退策略、HTTP 响应头如何保持旧 JSON 接口兼容、检索范围怎样保存到阅读记录。
 
-实现结果：自动章节识别优先用 PDF 书签或保守推断的标题；章节内容限定到起始页和下一同级/上级标题之前；没有结果时提示用户改用全文；用户可选全文。未完成真实论文运行验收前，不将本阶段标记为最终通过。详细结果见 [M6.4 章节检索验收](M6_4_VALIDATION.md)。
+实现结果：自动章节识别优先用 PDF 书签或保守推断的标题；章节内容限定到起始页和下一同级/上级标题之前；没有结果时提示用户改用全文；用户可选全文。使用 Attention Is All You Need、LoRA 与无书签的 BERT 真实 PDF 验收了书签解析、标题推断、章节页码过滤和全文回退。Embedding 离线评测因环境无法访问 Hugging Face 而未重跑。详细结果见 [M6.4 章节检索验收](M6_4_VALIDATION.md)。
+
+## M6.5.1：论文级语言偏好与回答语言
+
+设计依据：[双语阅读基础层开源产品拆解](research/2026-09-25-bilingual-reading-foundation.md)。
+
+新增文件：
+
+- `src/research_copilot/language_preferences.py`
+- `tests/test_language_preferences.py`
+- `docs/research/2026-09-25-bilingual-reading-foundation.md`
+- `docs/M6_5_1_VALIDATION.md`
+
+重要修改：`domain.py`、`paper_answer_service.py`、`reading_history.py`、`reading_service.py`、`web_app.py`、`test_paper_answer_service.py`、`test_reading_history.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`。
+
+以后学习：`Literal` 类型与请求边界校验、Pydantic 默认工厂、按论文 ID 隔离的配置 JSON、FastAPI GET/PUT、语言策略如何进入模型提示词、一次请求的配置快照为何随记录保存、旧 JSON 数据迁移兼容、为什么证据仍保持原文。
+
+验证结果：`80 passed`；论文语言偏好隔离、API 输入校验、回答生成传参、阅读历史快照和旧 JSON 兼容通过；前端 TypeScript 检查与生产构建通过。未调用真实 DeepSeek。此步只建立语言偏好与输出策略，还没有完整英文 UI、自动原文语言检测、段落级翻译上下文、术语表、翻译缓存或整篇双语视图。详细结果见 [M6.5.1 验收](M6_5_1_VALIDATION.md)。

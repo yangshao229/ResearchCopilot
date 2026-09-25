@@ -29,14 +29,20 @@ ScopeKind = Literal["full_paper", "section", "selection"]
 ScopeResolution = Literal["full_paper", "matched", "fallback"]
 ScopePreference = Literal["auto", "full_paper"]
 OutputLanguage = Literal["follow_question", "zh-CN", "en"]
+TranslationLanguage = Literal["zh-CN", "en"]
+TerminologyPolicy = Literal[
+    "bilingual_first_use",
+    "preserve_english",
+    "translate_all",
+]
 
 
 class LanguagePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     explanation_language: OutputLanguage = "follow_question"
-    translation_target: str = "zh-CN"
-    terminology_policy: str = "bilingual_first_use"
+    translation_target: TranslationLanguage = "zh-CN"
+    terminology_policy: TerminologyPolicy = "bilingual_first_use"
 
 
 class ReadingAnchor(BaseModel):
@@ -113,6 +119,7 @@ class PaperAnswer(BaseModel):
     model: str
     history_id: str | None = None
     scope: ReadingScope = Field(default_factory=ReadingScope)
+    language: LanguagePolicy = Field(default_factory=LanguagePolicy)
 
 
 class ReadingRecord(BaseModel):
@@ -133,6 +140,7 @@ class ReadingRecord(BaseModel):
     provider: str
     model: str
     scope: ReadingScope = Field(default_factory=ReadingScope)
+    language: LanguagePolicy = Field(default_factory=LanguagePolicy)
     confirmed: bool = False
     personal_note: str = ""
     category: ReadingCategory = "unclassified"

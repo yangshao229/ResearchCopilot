@@ -48,6 +48,14 @@ export type PaperReadingGuide = {
 
 export type SearchMode = "keyword" | "semantic" | "hybrid";
 export type ScopePreference = "auto" | "full_paper";
+export type LanguagePolicy = {
+  explanation_language: "follow_question" | "zh-CN" | "en";
+  translation_target: "zh-CN" | "en";
+  terminology_policy:
+    | "bilingual_first_use"
+    | "preserve_english"
+    | "translate_all";
+};
 export type ReadingScope = {
   kind: "full_paper" | "section" | "selection";
   resolution: "full_paper" | "matched" | "fallback";
@@ -101,6 +109,7 @@ export type PaperAnswer = {
   model: string;
   history_id: string | null;
   scope: ReadingScope;
+  language: LanguagePolicy;
 };
 
 export type ReadingRecord = {
@@ -122,6 +131,7 @@ export type ReadingRecord = {
   personal_note: string;
   category: ReadingCategory;
   scope: ReadingScope;
+  language: LanguagePolicy;
 };
 
 export type PaperSearchExecution = {
@@ -162,6 +172,36 @@ export async function listPapers(): Promise<Paper[]> {
   }
 
   return (await response.json()) as Paper[];
+}
+
+export async function getPaperLanguagePreferences(
+  paperId: string,
+): Promise<LanguagePolicy> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/language`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "论文语言偏好加载失败");
+  }
+  return (await response.json()) as LanguagePolicy;
+}
+
+export async function savePaperLanguagePreferences(
+  paperId: string,
+  policy: LanguagePolicy,
+): Promise<LanguagePolicy> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/language`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(policy),
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(response, "论文语言偏好保存失败");
+  }
+  return (await response.json()) as LanguagePolicy;
 }
 
 export async function importPaper(file: File): Promise<PaperImportResult> {
@@ -290,6 +330,7 @@ export async function answerPaper(
   sessionId = "default",
   limit = 5,
   scopePreference: ScopePreference = "auto",
+  language?: LanguagePolicy,
 ): Promise<PaperAnswer> {
   const response = await fetch(
     `/api/papers/${encodeURIComponent(paperId)}/answer`,
@@ -304,6 +345,7 @@ export async function answerPaper(
         limit,
         session_id: sessionId,
         scope_preference: scopePreference,
+        ...(language ? { language } : {}),
       }),
     },
   );

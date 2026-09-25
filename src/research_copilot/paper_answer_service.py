@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from research_copilot.domain import (
     AnswerCitation,
     Evidence,
+    LanguagePolicy,
     PaperAnswer,
     ReadingScope,
     SearchHit,
@@ -45,6 +46,7 @@ class AnswerModel(Protocol):
         self,
         question: str,
         evidence: list[Evidence],
+        language: LanguagePolicy | None = None,
     ) -> ModelAnswerDraft: ...
 
 
@@ -87,6 +89,7 @@ class DeepSeekAnswerModel:
         self,
         question: str,
         evidence: list[Evidence],
+        language: LanguagePolicy | None = None,
     ) -> ModelAnswerDraft:
         api_key = self._get_api_key()
 
@@ -101,7 +104,11 @@ class DeepSeekAnswerModel:
                 json={
                     "model": self.model_name,
                     "instructions": self._instructions(),
-                    "input": self._build_input(question, evidence),
+                    "input": self._build_input(
+                        question,
+                        evidence,
+                        language or LanguagePolicy(),
+                    ),
                     "max_output_tokens": 1600,
                     "text": {
                         "format": {
@@ -187,7 +194,12 @@ class DeepSeekAnswerModel:
         )
 
     @staticmethod
-    def _build_input(question: str, evidence: list[Evidence]) -> str:
+    def _build_input(
+        question: str,
+        evidence: list[Evidence],
+        language: LanguagePolicy | None = None,
+    ) -> str:
+        policy = language or LanguagePolicy()
         evidence_text = "\n\n".join(
             (
                 f"[E{item.evidence_id} | PDF 第 {item.source_page} 页]\n"
@@ -195,11 +207,23 @@ class DeepSeekAnswerModel:
             )
             for item in evidence
         )
+        output_language = {
+            "follow_question": "跟随用户问题的主要语言",
+            "zh-CN": "简体中文",
+            "en": "English",
+        }[policy.explanation_language]
+        terminology_instruction = {
+            "bilingual_first_use": "专业术语首次出现时保留英文并给出中文对应，后续用词保持一致。",
+            "preserve_english": "专业术语、缩写和变量保持英文，不擅自翻译。",
+            "translate_all": "在不改变含义的前提下翻译术语；关键英文术语可在首次出现时括注。",
+        }[policy.terminology_policy]
         return (
             f"问题：{question}\n\n"
             "以下是从当前论文中检索到的全部可用证据：\n\n"
             f"{evidence_text}\n\n"
-            "请用中文回答，并在 cited_evidence_ids 中列出实际支持回答的证据编号。"
+            f"请用{output_language}填写 answer 和 explanation。"
+            f"{terminology_instruction} "
+            "在 cited_evidence_ids 中列出实际支持回答的证据编号。"
         )
 
 
@@ -220,7 +244,9 @@ class PaperAnswerService:
         mode: SearchMode,
         limit: int = 5,
         scope: ReadingScope | None = None,
+        language: LanguagePolicy | None = None,
     ) -> PaperAnswer:
+        policy = language or LanguagePolicy()
         if scope is None:
             raw_evidence = self.search_service.search(
                 pdf_path,
@@ -263,9 +289,10 @@ class PaperAnswerService:
                 provider=self.answer_model.provider_name,
                 model=self.answer_model.model_name,
                 scope=scope or ReadingScope(),
+                language=policy,
             )
 
-        draft = self.answer_model.generate(question, evidence)
+        draft = self.answer_model.generate(question, evidence, policy)
         evidence_by_id = {item.evidence_id: item for item in evidence}
         valid_ids = list(
             dict.fromkeys(
@@ -295,6 +322,7 @@ class PaperAnswerService:
                 provider=self.answer_model.provider_name,
                 model=self.answer_model.model_name,
                 scope=scope or ReadingScope(),
+                language=policy,
             )
 
         return PaperAnswer(
@@ -307,4 +335,5 @@ class PaperAnswerService:
             provider=self.answer_model.provider_name,
             model=self.answer_model.model_name,
             scope=scope or ReadingScope(),
+            language=policy,
         )

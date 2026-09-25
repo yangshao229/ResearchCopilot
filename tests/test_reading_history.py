@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from research_copilot.paper_answer_service import AnswerCitation, PaperAnswer
+from research_copilot.domain import LanguagePolicy
 from research_copilot.reading_history import ReadingHistoryStore
 
 
@@ -42,6 +43,24 @@ def test_history_survives_store_recreation(tmp_path: Path) -> None:
     assert reloaded[0].id == created.id
     assert reloaded[0].citations[0].source_page == 2
     assert reloaded[0].confirmed is False
+
+
+def test_old_history_without_language_policy_uses_safe_defaults(
+    tmp_path: Path,
+) -> None:
+    store = ReadingHistoryStore(tmp_path)
+    created = store.add_record(
+        "paper-id", "paper.pdf", "Question", "hybrid", sample_answer()
+    )
+    history_path = tmp_path / "paper-id.json"
+    raw_records = json.loads(history_path.read_text(encoding="utf-8"))
+    raw_records[0].pop("language")
+    history_path.write_text(json.dumps(raw_records), encoding="utf-8")
+
+    loaded = store.list_records("paper-id")
+
+    assert loaded[0].id == created.id
+    assert loaded[0].language == LanguagePolicy()
 
 
 def test_confirmed_record_exports_reviewable_markdown(tmp_path: Path) -> None:

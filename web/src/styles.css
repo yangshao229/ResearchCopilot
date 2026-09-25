@@ -1182,6 +1182,35 @@ button:disabled {
   font-size: 10px;
 }
 
+.language-preferences {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.language-preferences label {
+  display: grid !important;
+  gap: 5px;
+  margin: 0 !important;
+  font-size: 10px !important;
+}
+
+.language-preferences label:last-child {
+  grid-column: 1 / -1;
+}
+
+.language-preferences select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #c7cec7;
+  border-radius: 7px;
+  padding: 7px 8px;
+  color: #435249;
+  background: #fff;
+  font-size: 10px;
+}
+
 .info-content dl {
   display: grid;
   gap: 10px;

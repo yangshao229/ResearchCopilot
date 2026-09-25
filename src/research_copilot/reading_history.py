@@ -8,6 +8,7 @@ from threading import RLock
 from uuid import uuid4
 
 from research_copilot.domain import (
+    LanguagePolicy,
     PaperAnswer,
     ReadingCategory,
     ReadingRecord,
@@ -52,6 +53,7 @@ class ReadingHistoryStore:
         answer: PaperAnswer,
         session_id: str = "default",
         scope: ReadingScope | None = None,
+        language: LanguagePolicy | None = None,
     ) -> ReadingRecord:
         with self._lock:
             record = ReadingRecord(
@@ -70,6 +72,7 @@ class ReadingHistoryStore:
                 provider=answer.provider,
                 model=answer.model,
                 scope=scope or answer.scope,
+                language=language or answer.language,
             )
             records = self.list_records(paper_id)
             records.insert(0, record)
@@ -160,6 +163,9 @@ class ReadingHistoryStore:
             "review_status: confirmed\n"
             f"model: {json.dumps(record.model, ensure_ascii=False)}\n"
             f"reading_scope: {json.dumps(scope_note, ensure_ascii=False)}\n"
+            f"explanation_language: {record.language.explanation_language}\n"
+            f"translation_target: {record.language.translation_target}\n"
+            f"terminology_policy: {record.language.terminology_policy}\n"
             "---\n\n"
             f"# {record.question}\n\n"
             "## AI 回答\n\n"

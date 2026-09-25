@@ -401,7 +401,7 @@ class AnswerApiFakeModel:
     provider_name = "fake"
     model_name = "fake-answer-model"
 
-    def generate(self, question, evidence):
+    def generate(self, question, evidence, language=None):
         return ModelAnswerDraft(
             answer="Transformer 不使用循环结构，因此能并行处理序列位置。",
             explanation="证据明确对比了循环网络的顺序计算限制。",
@@ -453,7 +453,15 @@ def test_paper_api_generates_answer_with_verified_page_citation(
 
     response = client.post(
         f"/api/papers/{paper_id}/answer",
-        json={"query": "Transformer", "mode": "keyword"},
+        json={
+            "query": "Transformer",
+            "mode": "keyword",
+            "language": {
+                "explanation_language": "en",
+                "translation_target": "en",
+                "terminology_policy": "preserve_english",
+            },
+        },
     )
 
     assert response.status_code == 200
@@ -462,12 +470,14 @@ def test_paper_api_generates_answer_with_verified_page_citation(
     assert answer["provider"] == "fake"
     assert answer["evidence"][0]["source_page"] == 2
     assert answer["history_id"]
+    assert answer["language"]["explanation_language"] == "en"
 
     history_response = client.get(f"/api/papers/{paper_id}/history")
     assert history_response.status_code == 200
     history = history_response.json()
     assert history[0]["id"] == answer["history_id"]
     assert history[0]["confirmed"] is False
+    assert history[0]["language"]["translation_target"] == "en"
 
     update_response = client.patch(
         f"/api/papers/{paper_id}/history/{answer['history_id']}",

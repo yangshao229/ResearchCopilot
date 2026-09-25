@@ -61,8 +61,11 @@ class ReadingService:
                 context.search_mode,
                 limit=limit,
                 scope=scope if scope.kind == "section" else None,
+                language=context.language,
             )
-        answer = answer.model_copy(update={"scope": scope})
+        answer = answer.model_copy(
+            update={"scope": scope, "language": context.language}
+        )
 
         record = self.history_store.add_record(
             context.paper_id,
@@ -72,6 +75,7 @@ class ReadingService:
             answer,
             session_id=context.session_id,
             scope=scope,
+            language=context.language,
         )
         return answer.model_copy(update={"history_id": record.id})
 

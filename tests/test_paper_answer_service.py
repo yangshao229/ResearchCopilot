@@ -10,6 +10,7 @@ from research_copilot.paper_answer_service import (
     ModelNotConfiguredError,
     PaperAnswerService,
 )
+from research_copilot.domain import LanguagePolicy
 
 
 class FakeSearchService:
@@ -34,13 +35,16 @@ class FakeAnswerModel:
     def __init__(self, draft: ModelAnswerDraft) -> None:
         self.draft = draft
         self.received_evidence: list[Evidence] = []
+        self.received_language: LanguagePolicy | None = None
 
     def generate(
         self,
         question: str,
         evidence: list[Evidence],
+        language: LanguagePolicy | None = None,
     ) -> ModelAnswerDraft:
         self.received_evidence = evidence
+        self.received_language = language
         return self.draft
 
 
@@ -83,6 +87,32 @@ def test_answer_maps_model_evidence_ids_to_real_pdf_pages() -> None:
     assert [citation.evidence_id for citation in answer.citations] == [1, 2]
     assert model.received_evidence[0].evidence_id == 1
     assert answer.insufficient_evidence is False
+
+
+def test_answer_passes_language_policy_to_model() -> None:
+    model = FakeAnswerModel(
+        ModelAnswerDraft(
+            answer="Answer",
+            explanation="Explanation",
+            cited_evidence_ids=[1],
+            insufficient_evidence=False,
+            uncertainty="",
+        )
+    )
+    service = PaperAnswerService(
+        FakeSearchService(
+            [{"source_page": 1, "chunk_index": 0, "text": "evidence", "score": 1.0}]
+        ),
+        model,
+    )
+    policy = LanguagePolicy(explanation_language="en")
+
+    answer = service.answer(
+        Path("paper.pdf"), "paper-id", "Question", "keyword", language=policy
+    )
+
+    assert answer.language == policy
+    assert model.received_language == policy
 
 
 def test_answer_fails_closed_when_model_cites_unknown_evidence() -> None:
@@ -199,6 +229,7 @@ def test_deepseek_model_requests_structured_json() -> None:
                 score=0.8,
             )
         ],
+        LanguagePolicy(explanation_language="en"),
     )
 
     assert result.cited_evidence_ids == [1]
@@ -209,6 +240,7 @@ def test_deepseek_model_requests_structured_json() -> None:
     assert isinstance(text_config, dict)
     assert text_config["format"]["type"] == "json_schema"  # type: ignore[index]
     assert "PDF 第 3 页" in str(request_body["input"])
+    assert "English" in str(request_body["input"])
     assert post.url == "https://api.deepseek.com/responses"
 
 

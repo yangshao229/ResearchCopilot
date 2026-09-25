@@ -26,16 +26,18 @@
 - 前端 TypeScript 类型检查与生产构建通过；Vite 仍报告包含 PDF.js 的 JS chunk 超过 500 kB。
 - `git diff --check` 通过。
 
-## 当前真实论文检查
+## 三篇真实论文检查（2026-09-25）
 
-仓库目前只有 `data/raw/sample.pdf`（Attention Is All You Need）。本地检查得到 PDF 自带书签的 22 个标题；“解释 Model Architecture 章节”唯一匹配到 PDF 第 2–5 页。将真实 PDF 临时分页后执行关键词检索，10 个结果的来源页全部处于第 2–5 页范围内。检查在本地完成，没有调用 DeepSeek。
+验收使用仓库现有 `data/raw/sample.pdf`（*Attention Is All You Need*），另从 arXiv 临时获取 *LoRA: Low-Rank Adaptation of Large Language Models*（<https://arxiv.org/abs/2106.09685>）和 *BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding*（<https://arxiv.org/abs/1810.04805>）。两篇外部 PDF 只放在 `/tmp` 临时目录，未加入 `data/raw`、未进入 Git，也没有调用 DeepSeek。
 
-## 真实论文验收待办
+| 论文 | 结构来源 | 固定章节问题 | 识别结果 | 检索页码检查 |
+| --- | --- | --- | --- | --- |
+| Attention Is All You Need | PDF 书签，22 标题，15 页 | `解释 Model Architecture 章节` | 第 2–5 页 | 10 条结果均在第 2–5 页 |
+| LoRA | PDF 书签，37 标题，26 页 | `解释 4 Our Method 章节` | 第 4 页 | 命中结果在第 4 页 |
+| BERT | 文本规则推断，31 标题，16 页 | `Summarize 3.1 Pre-training BERT` | 第 4 页 | 5 条结果均在第 4 页 |
 
-仍需补充至少两篇版式不同的真实 AI 论文，完成协议要求的三篇验收：
+失败路径也进行了真实结构检查：不存在的章节名称（`Summarize a nonexistent section`、`Explain section 99.7`）会产生带原因的全文回退；只提到泛化标题 `Results` 时不会强行误认 BERT 的多个 Results 类标题。全文模式相关的检索算法自动测试仍通过。
 
-1. 一本带可靠 PDF 书签的论文：指定子章节检索命中区间内页码。
-2. 一本只有编号标题的论文：推断章节并查看告警，检索仍保留原文页码。
-3. 一本目录缺失或多个同名标题的论文：界面明确显示全文回退，结果不伪装成章节限定。
+固定评测脚本的实时 MRR/Recall 重跑未完成：当前执行环境不能访问 Hugging Face，且该环境没有所需的 Embedding 模型缓存。此前记录的 M4 基线为 Recall@5 `1.00`、混合检索 MRR `1.00`；本次未将旧记录冒充为刚刚重跑的结果。
 
-同时检查全文模式的现有 M4 Recall@5 和 MRR 不变，以及会话、引用和卡片导出仍然隔离。
+外部 PDF 清理方式：验收完成后可删除本次 `/tmp/researchcopilot-pdf-validation.*` 目录；正式论文资料库没有新增文件。
