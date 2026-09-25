@@ -65,9 +65,7 @@ def build_paper_card(page_data: dict[str, object]) -> str:
 
 def write_paper_card(page_data_path: Path, output_path: Path) -> None:
     if output_path.exists():
-        raise FileExistsError(
-            f"Refusing to overwrite existing note: {output_path}"
-        )
+        raise FileExistsError(f"Refusing to overwrite existing note: {output_path}")
 
     page_data = load_page_data(page_data_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
