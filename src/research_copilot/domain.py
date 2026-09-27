@@ -30,6 +30,7 @@ ScopeResolution = Literal["full_paper", "matched", "fallback"]
 ScopePreference = Literal["auto", "full_paper"]
 OutputLanguage = Literal["follow_question", "zh-CN", "en"]
 TranslationLanguage = Literal["zh-CN", "en"]
+SourceLanguageOverride = Literal["auto", "zh-CN", "en"]
 TerminologyPolicy = Literal[
     "bilingual_first_use",
     "preserve_english",
@@ -43,6 +44,7 @@ class LanguagePolicy(BaseModel):
     explanation_language: OutputLanguage = "follow_question"
     translation_target: TranslationLanguage = "zh-CN"
     terminology_policy: TerminologyPolicy = "bilingual_first_use"
+    source_language_override: SourceLanguageOverride = "auto"
 
 
 class GlossaryEntry(BaseModel):

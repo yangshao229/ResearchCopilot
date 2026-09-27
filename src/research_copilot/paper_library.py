@@ -8,6 +8,11 @@ from uuid import uuid4
 from pydantic import BaseModel
 from pypdf import PdfReader
 
+from research_copilot.source_language import (
+    DetectedSourceLanguage,
+    detect_source_language,
+)
+
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_PAPER_DIRECTORY = PROJECT_ROOT / "data" / "raw"
@@ -19,6 +24,7 @@ class PaperSummary(BaseModel):
     name: str
     relative_path: str
     page_count: int | None
+    detected_source_language: DetectedSourceLanguage = "unknown"
 
 
 class PaperImportResult(BaseModel):
@@ -87,14 +93,24 @@ class PaperLibrary:
 
     def _summarize(self, path: Path) -> PaperSummary:
         try:
-            page_count: int | None = len(PdfReader(path).pages)
+            reader = PdfReader(path)
+            page_count: int | None = len(reader.pages)
+            page_texts: list[str] = []
+            for page in reader.pages[:5]:
+                try:
+                    page_texts.append(page.extract_text() or "")
+                except Exception:
+                    continue
+            detected_language = detect_source_language(page_texts)
         except Exception:
             page_count = None
+            detected_language = "unknown"
         return PaperSummary(
             id=self._paper_id(path),
             name=path.name,
             relative_path=self._relative_path(path),
             page_count=page_count,
+            detected_source_language=detected_language,
         )
 
     def _paper_id(self, path: Path) -> str:

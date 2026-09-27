@@ -614,6 +614,18 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     assert fake_model.call_count == 1
     assert len(history_store.list_records(paper_id)) == 1
 
+    corrected_source_language = client.post(
+        f"/api/papers/{paper_id}/answer",
+        json={
+            "query": "翻译当前选中的论文原文",
+            "task": "translate",
+            "anchor": {"source_page": 2, "selected_text": selected_text},
+            "language": {"source_language_override": "en"},
+        },
+    )
+    assert corrected_source_language.json()["cache_hit"] is True
+    assert fake_model.call_count == 1
+
     in_english = client.post(
         f"/api/papers/{paper_id}/answer",
         json={

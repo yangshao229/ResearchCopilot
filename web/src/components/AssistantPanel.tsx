@@ -69,6 +69,7 @@ export default function AssistantPanel({
     explanation_language: "follow_question",
     translation_target: "zh-CN",
     terminology_policy: "bilingual_first_use",
+    source_language_override: "auto",
   });
   const [languagePolicyError, setLanguagePolicyError] = useState<string | null>(
     null,
@@ -116,6 +117,7 @@ export default function AssistantPanel({
       explanation_language: "follow_question",
       translation_target: "zh-CN",
       terminology_policy: "bilingual_first_use",
+      source_language_override: "auto",
     });
     getPaperLanguagePreferences(paper.id)
       .then((preferences) => {
@@ -884,6 +886,35 @@ export default function AssistantPanel({
           </select>
         </label>
         <div className="language-preferences" aria-label="论文语言偏好">
+          <div className="source-language-control">
+            <label>
+              论文原文语言
+              <select
+                value={languagePolicy.source_language_override}
+                disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
+                onChange={(event) =>
+                  void updateLanguagePolicy({
+                    ...languagePolicy,
+                    source_language_override: event.target.value as LanguagePolicy["source_language_override"],
+                  })
+                }
+              >
+                <option value="auto">自动判断</option>
+                <option value="en">手动指定：英文</option>
+                <option value="zh-CN">手动指定：中文</option>
+              </select>
+            </label>
+            <p className="source-language-hint">
+              {languagePolicy.source_language_override === "auto"
+                ? `本地估计：${{
+                    en: "英文",
+                    "zh-CN": "中文",
+                    mixed: "中英混排",
+                    unknown: "无法判断（可能是扫描件）",
+                  }[paper.detected_source_language]}；不改变翻译目标或 PDF 原文。`
+                : `已由你指定为${languagePolicy.source_language_override === "en" ? "英文" : "中文"}；不改变翻译目标或 PDF 原文。`}
+            </p>
+          </div>
           <label>
             回答语言
             <select

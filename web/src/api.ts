@@ -3,6 +3,7 @@ export type Paper = {
   name: string;
   relative_path: string;
   page_count: number | null;
+  detected_source_language: "en" | "zh-CN" | "mixed" | "unknown";
 };
 
 export type PaperImportResult = {
@@ -55,6 +56,7 @@ export type LanguagePolicy = {
     | "bilingual_first_use"
     | "preserve_english"
     | "translate_all";
+  source_language_override: "auto" | "zh-CN" | "en";
 };
 export type GlossaryEntry = {
   id: string;

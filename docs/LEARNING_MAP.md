@@ -389,3 +389,20 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：领域模型与独立 JSON 存储、输入校验、英文词边界与术语匹配排序、只发送命中项的隐私边界、翻译提示中“用户译名偏好”和“论文证据”的区别、术语快照哈希与缓存失效、前后端状态同步、如何用假模型验证请求而不花 API 费用。
 
 验证结果：完整测试 `94 passed`；前端 TypeScript 与生产构建通过；真实 `sample.pdf` 第 2 页术语匹配与页面展开检查通过。未调用真实 DeepSeek，详细结果见 [M6.5.4 验收](M6_5_4_VALIDATION.md)。
+
+## M6.5.5：原文语言的本地判断与人工覆写
+
+设计依据：[原文与界面语言开源产品拆解](research/2026-09-27-source-and-interface-language.md)。
+
+新增文件：
+
+- `docs/research/2026-09-27-source-and-interface-language.md`
+- `docs/M6_5_5_VALIDATION.md`
+- `src/research_copilot/source_language.py`
+- `tests/test_source_language.py`
+
+重要修改：`domain.py`、`paper_library.py`、`reading_service.py`、`test_language_preferences.py`、`test_web_app.py`、`api.ts`、`AssistantPanel.tsx`、`styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`、`LEARNING_MAP.md`。
+
+以后学习：原文/界面/回答/翻译目标四种语言为何分开、PDF 可抽取文本与扫描件、启发式判断和 `unknown`/`mixed`、用户覆写与旧 JSON 兼容、为何展示属性不应进入译文缓存键、怎样保持论文与会话作用域清楚。
+
+验证结果：完整测试 `97 passed`；前端 TypeScript 与生产构建通过；真实 `sample.pdf` 检测为英文，页面显示和独立设置检查通过。未调用真实 DeepSeek；详细结果见 [M6.5.5 验收](M6_5_5_VALIDATION.md)。

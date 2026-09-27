@@ -24,6 +24,7 @@ def test_language_preferences_are_paper_scoped_and_persistent(
         explanation_language="en",
         translation_target="en",
         terminology_policy="preserve_english",
+        source_language_override="zh-CN",
     )
 
     store.save("paper-a", english)
@@ -32,6 +33,14 @@ def test_language_preferences_are_paper_scoped_and_persistent(
         "paper-a"
     ) == english
     assert store.get("paper-b") == LanguagePolicy()
+
+    legacy_path = tmp_path / "preferences" / "legacy.json"
+    legacy_path.write_text(
+        '{"explanation_language":"en","translation_target":"zh-CN",'
+        '"terminology_policy":"preserve_english"}',
+        encoding="utf-8",
+    )
+    assert store.get("legacy").source_language_override == "auto"
 
 
 def test_language_preferences_api_isolated_by_paper(tmp_path: Path) -> None:
@@ -54,6 +63,10 @@ def test_language_preferences_api_isolated_by_paper(tmp_path: Path) -> None:
     }
     first_id = paper_ids["first.pdf"]
     second_id = paper_ids["second.pdf"]
+    assert all(
+        paper["detected_source_language"] == "unknown"
+        for paper in client.get("/api/papers").json()
+    )
 
     response = client.put(
         f"/api/papers/{first_id}/language",
@@ -61,6 +74,7 @@ def test_language_preferences_api_isolated_by_paper(tmp_path: Path) -> None:
             "explanation_language": "en",
             "translation_target": "en",
             "terminology_policy": "preserve_english",
+            "source_language_override": "en",
         },
     )
 
@@ -70,6 +84,7 @@ def test_language_preferences_api_isolated_by_paper(tmp_path: Path) -> None:
         "explanation_language": "follow_question",
         "translation_target": "zh-CN",
         "terminology_policy": "bilingual_first_use",
+        "source_language_override": "auto",
     }
 
     invalid = client.put(
@@ -77,3 +92,9 @@ def test_language_preferences_api_isolated_by_paper(tmp_path: Path) -> None:
         json={"explanation_language": "fr"},
     )
     assert invalid.status_code == 422
+
+    invalid_override = client.put(
+        f"/api/papers/{first_id}/language",
+        json={"source_language_override": "fr"},
+    )
+    assert invalid_override.status_code == 422

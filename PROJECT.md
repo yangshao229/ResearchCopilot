@@ -172,9 +172,10 @@ GitHub 同步、Windows 计算、实验追踪和数据库均服务于上述阅�
 43. 完成 M6.4 三篇真实论文验证：Attention Is All You Need（书签）、LoRA（书签）、BERT（无书签、标题推断）；两篇测试 PDF 只存于临时目录。完整结果见 [M6.4 章节检索验收](docs/M6_4_VALIDATION.md)。
 44. 开始 M6.5 双语基础层：每篇论文可单独保存回答语言、翻译目标与术语策略；问答请求使用语言策略生成，并把当次策略写入答案、阅读记录和 Markdown 导出。开源拆解见 [双语阅读基础层拆解](docs/research/2026-09-25-bilingual-reading-foundation.md)，验收见 [M6.5.1 验收](docs/M6_5_1_VALIDATION.md)。
 45. 完成 M6.5.2 选区上下文翻译、M6.5.3 翻译缓存与显式重译，以及 M6.5.4 论文级人工术语表；各阶段的开源拆解、增改文件和验收记录见 [分阶段学习地图](docs/LEARNING_MAP.md)。
+46. 完成 M6.5.5 原文语言的本地保守判断与论文级人工覆写；扫描/少文本返回未知，中英混排单独标识，不改变 PDF、回答/翻译目标或安全缓存。见 [开源拆解](docs/research/2026-09-27-source-and-interface-language.md) 和 [验收](docs/M6_5_5_VALIDATION.md)。
 
 ## 下一里程碑
 
 M6.5.4 已完成：当前论文可维护人工确认的译名，按目标语言隔离；选区翻译只使用实际命中的术语并在调用前预览。修改相关术语后不会误用旧译文，术语不充当 PDF 证据。完整后端测试 `94 passed`，前端构建与真实 `sample.pdf` 的本地检查通过；未调用真实 DeepSeek。见 [开源拆解](docs/research/2026-09-26-paper-glossary.md) 与 [验收](docs/M6_5_4_VALIDATION.md)。
 
-下一步先拆解开源产品中的原文语言识别和界面语言切换，确定其与现有论文语言偏好、问答、术语、历史记录和 PDF 原文的边界，再进入实现。完整英文界面尚未完成；整篇双语阅读视图推迟到 M7 的布局解析稳定后。每个新功能仍须先按 [开源调研约定](docs/OPEN_SOURCE_RESEARCH_PROTOCOL.md) 做产品拆解。
+M6.5.5 已完成原文语言判断，真实 `sample.pdf` 本地估计为英文；完整测试 `97 passed`，前端构建通过。下一阶段 M6.5.6 按 [语言边界拆解](docs/research/2026-09-27-source-and-interface-language.md) 实现完整的中文/英文界面消息表和切换；界面语言不属于论文，也不改变模型任务。整篇双语阅读视图推迟到 M7 的布局解析稳定后。每个新功能仍须先按 [开源调研约定](docs/OPEN_SOURCE_RESEARCH_PROTOCOL.md) 做产品拆解。

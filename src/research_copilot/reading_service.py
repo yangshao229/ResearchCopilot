@@ -178,7 +178,8 @@ class ReadingService:
                 or record.anchor.selected_text != preview.selected_text
                 or record.context_text != preview.context_text
                 or record.glossary_signature != current_glossary_signature
-                or record.language != context.language
+                or record.language.model_dump(exclude={"source_language_override"})
+                != context.language.model_dump(exclude={"source_language_override"})
                 or record.provider != model.provider_name
                 or record.model != model.model_name
                 or record.insufficient_evidence
