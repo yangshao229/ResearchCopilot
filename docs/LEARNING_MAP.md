@@ -424,3 +424,21 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：UI 语言与原文/回答/翻译目标为何独立，React Context 与 `localStorage`，消息键及占位符，后端中文状态和用户内容的边界，为什么在英文界面保留 PDF 原文和历史会话名，目录一致性测试与实际浏览器验收。
 
 验证结果：完整测试 `100 passed`，TypeScript 和生产构建通过；真实页面中英切换、刷新保留、目录/提问区及原文不变检查通过。未调用真实 DeepSeek；详细结果见 [M6.5.6 验收](M6_5_6_VALIDATION.md)。
+
+## M6.6：按需翻译当前 PDF 页
+
+设计依据：[当前页论文翻译开源产品拆解](research/2026-09-28-page-translation.md)。
+
+新增文件：
+
+- `docs/research/2026-09-28-page-translation.md`
+- `docs/M6_6_VALIDATION.md`
+- `src/research_copilot/page_translation.py`
+- `tests/test_page_translation.py`
+- `web/src/components/PageTranslationPanel.tsx`
+
+重要修改：`src/research_copilot/web_app.py`、`tests/test_frontend_i18n.py`、`web/src/api.ts`、`web/src/App.tsx`、`web/src/components/AssistantPanel.tsx`、`web/src/locales/en.json`、`web/src/locales/zh-CN.json`、`web/src/styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`、`LEARNING_MAP.md`。
+
+以后学习：PDF 文本层与扫描件、页码锚点、按需 API 调用和费用边界、服务端缓存键与失效、术语表命中、原文与译文并排、为什么未经布局解析不能宣称逐段精确对齐，以及 DeepSeek 适配器和假模型测试。
+
+验证结果：完整测试 `104 passed`、前端构建通过；真实 `sample.pdf` 页面中英文都出现“翻译当前页”，页码跟随 PDF 翻页。未调用真实 DeepSeek；详见 [M6.6 验收](M6_6_VALIDATION.md)。

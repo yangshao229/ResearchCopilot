@@ -11,6 +11,7 @@ COMPONENT_FILES = (
     PROJECT_ROOT / "web" / "src" / "components" / "AssistantPanel.tsx",
     PROJECT_ROOT / "web" / "src" / "components" / "GlossaryManager.tsx",
     PROJECT_ROOT / "web" / "src" / "components" / "PdfReader.tsx",
+    PROJECT_ROOT / "web" / "src" / "components" / "PageTranslationPanel.tsx",
     PROJECT_ROOT
     / "web"
     / "src"

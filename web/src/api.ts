@@ -143,6 +143,15 @@ export type PaperAnswer = {
   cache_hit: boolean;
 };
 
+export type PageTranslation = {
+  source_page: number;
+  source_chars: number;
+  target_language: "zh-CN" | "en";
+  translated_text: string;
+  model: string;
+  cache_hit: boolean;
+};
+
 export type ReadingRecord = {
   id: string;
   paper_id: string;
@@ -206,6 +215,38 @@ export async function listPapers(): Promise<Paper[]> {
   }
 
   return (await response.json()) as Paper[];
+}
+
+export async function getPageTranslation(
+  paperId: string,
+  sourcePage: number,
+): Promise<PageTranslation | null> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/translation`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "页译文加载失败");
+  }
+  return (await response.json()) as PageTranslation | null;
+}
+
+export async function translatePage(
+  paperId: string,
+  sourcePage: number,
+  refresh = false,
+): Promise<PageTranslation> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/translation`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh }),
+    },
+  );
+  if (!response.ok) {
+    throw await responseError(response, "当前页翻译失败");
+  }
+  return (await response.json()) as PageTranslation;
 }
 
 export async function getPaperLanguagePreferences(

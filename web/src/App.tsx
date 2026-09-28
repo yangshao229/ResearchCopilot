@@ -215,6 +215,7 @@ export default function App() {
               <AssistantPanel
                 key={selectedPaper.id}
                 paper={selectedPaper}
+                pageNumber={pageNumber}
                 selection={selection}
                 onClearSelection={() => setSelection(null)}
                 onNavigateToPage={changePage}

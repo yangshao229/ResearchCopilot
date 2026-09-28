@@ -33,6 +33,7 @@ import type { MessageKey } from "../i18n";
 import { scopeStatus, selectionStatus } from "../ui-status";
 import type { PdfSelection } from "./PdfReader";
 import GlossaryManager from "./GlossaryManager";
+import PageTranslationPanel from "./PageTranslationPanel";
 import {
   EvidenceView,
   HistoryCard,
@@ -46,6 +47,7 @@ import {
 type AssistantTab =
   | "ask"
   | "outline"
+  | "translation"
   | "evidence"
   | "history"
   | "summary"
@@ -60,6 +62,7 @@ const guideRoleKeys: Record<ReadingQuestion["role"], MessageKey> = {
 
 type AssistantPanelProps = {
   paper: Paper;
+  pageNumber: number;
   selection: PdfSelection | null;
   onClearSelection: () => void;
   onNavigateToPage: (pageNumber: number) => void;
@@ -67,6 +70,7 @@ type AssistantPanelProps = {
 
 export default function AssistantPanel({
   paper,
+  pageNumber,
   selection,
   onClearSelection,
   onNavigateToPage,
@@ -537,6 +541,15 @@ export default function AssistantPanel({
         </button>
         <button
           type="button"
+          className={activeTab === "translation" ? "active" : ""}
+          role="tab"
+          aria-selected={activeTab === "translation"}
+          onClick={() => setActiveTab("translation")}
+        >
+          {t("assistant.tabTranslation")}
+        </button>
+        <button
+          type="button"
           className={activeTab === "ask" ? "active" : ""}
           role="tab"
           aria-selected={activeTab === "ask"}
@@ -822,6 +835,12 @@ export default function AssistantPanel({
 
           {error && <p className="search-error">{error}</p>}
         </div>
+      ) : activeTab === "translation" ? (
+        <PageTranslationPanel
+          paperId={paper.id}
+          sourcePage={pageNumber}
+          targetLanguage={languagePolicy.translation_target}
+        />
       ) : activeTab === "outline" ? (
         <OutlineView
           structure={structure}

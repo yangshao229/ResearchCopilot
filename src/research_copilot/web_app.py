@@ -47,6 +47,7 @@ from research_copilot.paper_library import (
     PaperSummary,
 )
 from research_copilot.paper_reading_guide import PaperReadingGuide
+from research_copilot.page_translation import PageTranslation, PageTranslationService
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.paper_structure import PaperStructure
 from research_copilot.language_preferences import PaperLanguagePreferenceStore
@@ -63,6 +64,7 @@ DEFAULT_LANGUAGE_PREFERENCES_DIRECTORY = (
     PROJECT_ROOT / "artifacts" / "language_preferences"
 )
 DEFAULT_GLOSSARY_DIRECTORY = PROJECT_ROOT / "artifacts" / "glossary"
+DEFAULT_PAGE_TRANSLATION_DIRECTORY = PROJECT_ROOT / "artifacts" / "page_translations"
 
 
 class PaperSearchRequest(BaseModel):
@@ -158,6 +160,10 @@ class ConversationSessionCreate(BaseModel):
         return cleaned_value
 
 
+class PageTranslationRequest(BaseModel):
+    refresh: bool = False
+
+
 def create_app(
     paper_directory: Path | None = None,
     processed_directory: Path | None = None,
@@ -171,6 +177,7 @@ def create_app(
     reading_service: ReadingService | None = None,
     language_preference_store: PaperLanguagePreferenceStore | None = None,
     glossary_store: PaperGlossaryStore | None = None,
+    page_translation_service: PageTranslationService | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -196,6 +203,16 @@ def create_app(
         else DEFAULT_GLOSSARY_DIRECTORY
     )
     glossary = glossary_store or PaperGlossaryStore(glossary_directory)
+    page_translation_directory = (
+        history.root_directory.parent / "page_translations"
+        if history_store is not None
+        else DEFAULT_PAGE_TRANSLATION_DIRECTORY
+    )
+    page_translator = page_translation_service or PageTranslationService(
+        searcher,
+        glossary,
+        page_translation_directory,
+    )
     reader = reading_service or ReadingService(
         answerer,
         history,
@@ -322,6 +339,51 @@ def create_app(
             paper_path,
             media_type="application/pdf",
         )
+
+    @app.get(
+        "/api/papers/{paper_id}/pages/{source_page}/translation",
+        response_model=PageTranslation | None,
+    )
+    def get_page_translation(paper_id: str, source_page: int) -> PageTranslation | None:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+            policy = language_preferences.get(paper_id)
+            return page_translator.cached(paper_path, paper_id, source_page, policy)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+
+    @app.post(
+        "/api/papers/{paper_id}/pages/{source_page}/translation",
+        response_model=PageTranslation,
+    )
+    def translate_page(
+        paper_id: str,
+        source_page: int,
+        request: PageTranslationRequest,
+    ) -> PageTranslation:
+        try:
+            paper_path = library.get_paper_path(paper_id)
+            policy = language_preferences.get(paper_id)
+            return page_translator.translate(
+                paper_path,
+                paper_id,
+                source_page,
+                policy,
+                refresh=request.refresh,
+            )
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
+        except ModelNotConfiguredError as error:
+            raise HTTPException(
+                status_code=503,
+                detail="DeepSeek API 尚未配置。请在 .env 中设置 DEEPSEEK_API_KEY。",
+            ) from error
+        except AnswerGenerationError as error:
+            raise HTTPException(status_code=502, detail=str(error)) from error
 
     @app.get(
         "/api/papers/{paper_id}/structure",

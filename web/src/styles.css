@@ -464,6 +464,60 @@ button:disabled {
   line-height: 1.35;
 }
 
+.page-translation-content {
+  overflow-wrap: anywhere;
+}
+
+.translation-boundary {
+  padding: 12px 14px;
+  border: 1px solid #e4d5b7;
+  border-radius: 10px;
+  background: #fff8e9;
+  color: #5e533d;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.translation-target,
+.translation-source-count {
+  color: #68736b;
+  font-size: 12px;
+}
+
+.translation-action {
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #3e6a50;
+  border-radius: 9px;
+  color: white;
+  background: #3e6a50;
+  font-weight: 700;
+}
+
+.page-translation-result {
+  margin-top: 16px;
+  border-top: 1px solid #dde1db;
+  padding-top: 16px;
+}
+
+.page-translation-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.page-translation-heading small {
+  color: #68736b;
+}
+
+.page-translation-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.8;
+}
+
 .assistant-intro {
   color: #667169;
   font-size: 13px;
