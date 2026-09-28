@@ -14,6 +14,7 @@ class ReadingQuestion(BaseModel):
 
     role: ReadingRole
     label: str
+    section_title: str
     question: str
     source_page: int = Field(ge=1)
 
@@ -73,6 +74,7 @@ def build_reading_guide(structure: PaperStructure) -> PaperReadingGuide:
             ReadingQuestion(
                 role="overview",
                 label=f"先读 {first_section.title}",
+                section_title=first_section.title,
                 question=(
                     f"请解释 {first_section.title} 章节的核心内容，"
                     "并引用支持结论的原文页码。"
@@ -126,6 +128,7 @@ def _question_for_section(
     return ReadingQuestion(
         role=role,
         label=f"{label_prefix} · {section.title}",
+        section_title=section.title,
         question=(
             f"阅读 {section.title}（PDF 第 {section.source_page} 页起）："
             f"{prompt}请引用具体原文页码。"

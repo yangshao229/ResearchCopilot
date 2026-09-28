@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { pdfjs } from "react-pdf";
 
 import App from "./App";
+import { I18nProvider, useI18n } from "./i18n-context";
 import "./styles.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
@@ -72,19 +73,10 @@ class StartupErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       return (
-        <main className="startup-error">
-          <h1>ResearchCopilot 启动失败</h1>
-          <p>页面已连接本地服务，但一个界面组件运行失败。</p>
-          <pre>
-            {[
-              this.state.error.message,
-              this.state.error.stack,
-              this.state.componentStack,
-            ]
-              .filter(Boolean)
-              .join("\n\n")}
-          </pre>
-        </main>
+        <StartupErrorView
+          error={this.state.error}
+          componentStack={this.state.componentStack}
+        />
       );
     }
 
@@ -92,10 +84,33 @@ class StartupErrorBoundary extends Component<
   }
 }
 
+function StartupErrorView({
+  error,
+  componentStack,
+}: {
+  error: Error;
+  componentStack: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <main className="startup-error">
+      <h1>{t("startup.title")}</h1>
+      <p>{t("startup.body")}</p>
+      <pre>
+        {[error.message, error.stack, componentStack]
+          .filter(Boolean)
+          .join("\n\n")}
+      </pre>
+    </main>
+  );
+}
+
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <StartupErrorBoundary>
-      <App />
-    </StartupErrorBoundary>
+    <I18nProvider>
+      <StartupErrorBoundary>
+        <App />
+      </StartupErrorBoundary>
+    </I18nProvider>
   </StrictMode>,
 );

@@ -173,9 +173,10 @@ GitHub 同步、Windows 计算、实验追踪和数据库均服务于上述阅�
 44. 开始 M6.5 双语基础层：每篇论文可单独保存回答语言、翻译目标与术语策略；问答请求使用语言策略生成，并把当次策略写入答案、阅读记录和 Markdown 导出。开源拆解见 [双语阅读基础层拆解](docs/research/2026-09-25-bilingual-reading-foundation.md)，验收见 [M6.5.1 验收](docs/M6_5_1_VALIDATION.md)。
 45. 完成 M6.5.2 选区上下文翻译、M6.5.3 翻译缓存与显式重译，以及 M6.5.4 论文级人工术语表；各阶段的开源拆解、增改文件和验收记录见 [分阶段学习地图](docs/LEARNING_MAP.md)。
 46. 完成 M6.5.5 原文语言的本地保守判断与论文级人工覆写；扫描/少文本返回未知，中英混排单独标识，不改变 PDF、回答/翻译目标或安全缓存。见 [开源拆解](docs/research/2026-09-27-source-and-interface-language.md) 和 [验收](docs/M6_5_5_VALIDATION.md)。
+47. 完成 M6.5.6 中英文界面切换：界面文案集中为两套消息目录，选择仅保存在浏览器，刷新后仍有效；PDF 原文、模型任务与论文级语言偏好不随界面切换。见 [开源拆解](docs/research/2026-09-28-interface-language.md)、[验收](docs/M6_5_6_VALIDATION.md) 和 [分阶段学习地图](docs/LEARNING_MAP.md)。
 
 ## 下一里程碑
 
 M6.5.4 已完成：当前论文可维护人工确认的译名，按目标语言隔离；选区翻译只使用实际命中的术语并在调用前预览。修改相关术语后不会误用旧译文，术语不充当 PDF 证据。完整后端测试 `94 passed`，前端构建与真实 `sample.pdf` 的本地检查通过；未调用真实 DeepSeek。见 [开源拆解](docs/research/2026-09-26-paper-glossary.md) 与 [验收](docs/M6_5_4_VALIDATION.md)。
 
-M6.5.5 已完成原文语言判断，真实 `sample.pdf` 本地估计为英文；完整测试 `97 passed`，前端构建通过。下一阶段 M6.5.6 按 [语言边界拆解](docs/research/2026-09-27-source-and-interface-language.md) 实现完整的中文/英文界面消息表和切换；界面语言不属于论文，也不改变模型任务。整篇双语阅读视图推迟到 M7 的布局解析稳定后。每个新功能仍须先按 [开源调研约定](docs/OPEN_SOURCE_RESEARCH_PROTOCOL.md) 做产品拆解。
+M6.5.6 已完成中英文界面消息表和切换；完整测试 `100 passed`，前端构建及真实页面切换/刷新检查通过。下一阶段先依照 [开源调研约定](docs/OPEN_SOURCE_RESEARCH_PROTOCOL.md) 拆解产品，再进入 M7 的解析质量检测、布局块与坐标基础；整篇双语阅读视图需待布局解析可靠后设计。每个新功能都先做开源论文阅读产品拆解。

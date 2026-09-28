@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { importPaper, listPapers, type Paper } from "./api";
 import AssistantPanel from "./components/AssistantPanel";
 import PdfReader, { type PdfSelection } from "./components/PdfReader";
+import { useI18n, type UiLanguage } from "./i18n-context";
 
 
 const SELECTED_PAPER_KEY = "research-copilot:selected-paper";
@@ -20,6 +21,7 @@ function loadSavedPage(paperId: string): number {
 }
 
 export default function App() {
+  const { language, setLanguage, t, errorMessage } = useI18n();
   const [papers, setPapers] = useState<Paper[]>([]);
   const [selectedPaperId, setSelectedPaperId] = useState<string | null>(null);
   const [pagesByPaper, setPagesByPaper] = useState<Record<string, number>>({});
@@ -46,7 +48,7 @@ export default function App() {
         setSelectedPaperId(selectedPaper?.id ?? loadedPapers[0]?.id ?? null);
       })
       .catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : "论文列表加载失败。");
+        setError(errorMessage(reason, "app.errorPaperList"));
       })
       .finally(() => setIsLoading(false));
   }, []);
@@ -101,9 +103,11 @@ export default function App() {
       setSelectedPaperId(result.paper.id);
       setSelection(null);
       setLibraryOpen(true);
-      setImportMessage(result.message);
+      setImportMessage(
+        result.imported ? t("app.importSuccess") : t("app.importDuplicate"),
+      );
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "PDF 导入失败。");
+      setError(errorMessage(reason, "app.errorImportPdf"));
     } finally {
       setIsImporting(false);
     }
@@ -113,21 +117,32 @@ export default function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <p className="eyebrow">Local paper workspace</p>
+          <p className="eyebrow">{t("app.workspaceEyebrow")}</p>
           <h1>ResearchCopilot</h1>
         </div>
         <div className="topbar-actions">
           <button type="button" onClick={() => setLibraryOpen((open) => !open)}>
-            {libraryOpen ? "收起资料库" : "打开资料库"}
+            {libraryOpen ? t("app.collapseLibrary") : t("app.openLibrary")}
           </button>
           <button
             type="button"
             disabled={!selectedPaper}
             onClick={() => setAssistantOpen((open) => !open)}
           >
-            {assistantOpen ? "收起助手" : "打开助手"}
+            {assistantOpen ? t("app.collapseAssistant") : t("app.openAssistant")}
           </button>
-          <div className="milestone-badge">论文阅读工作台</div>
+          <label className="ui-language-picker">
+            <span>{t("app.interfaceLanguage")}</span>
+            <select
+              aria-label={t("app.interfaceLanguage")}
+              value={language}
+              onChange={(event) => setLanguage(event.target.value as UiLanguage)}
+            >
+              <option value="zh-CN">{t("app.languageChinese")}</option>
+              <option value="en">{t("app.languageEnglish")}</option>
+            </select>
+          </label>
+          <div className="milestone-badge">{t("app.milestone")}</div>
         </div>
       </header>
 
@@ -138,9 +153,9 @@ export default function App() {
       >
         <aside className="library-panel">
           <div className="panel-heading">
-            <p className="eyebrow">本地资料库</p>
-            <h2>论文</h2>
-            <span>{papers.length} 篇</span>
+            <p className="eyebrow">{t("app.libraryEyebrow")}</p>
+            <h2>{t("app.papers")}</h2>
+            <span>{t("app.paperCount", { count: papers.length })}</span>
           </div>
 
           <label className="import-paper-button">
@@ -153,20 +168,20 @@ export default function App() {
                 event.currentTarget.value = "";
               }}
             />
-            {isImporting ? "正在导入…" : "+ 导入 PDF"}
+            {isImporting ? t("app.importing") : t("app.importPdf")}
           </label>
           {importMessage && <p className="import-message">{importMessage}</p>}
 
-          {isLoading && <p className="muted panel-message">正在扫描论文…</p>}
+          {isLoading && <p className="muted panel-message">{t("app.scanning")}</p>}
           {error && <p className="error panel-message">{error}</p>}
           {!isLoading && !error && papers.length === 0 && (
             <div className="panel-message empty-library">
-              <strong>还没有本地论文</strong>
-              <p>点击“导入 PDF”，选择电脑上的论文即可开始。</p>
+              <strong>{t("app.emptyLibraryTitle")}</strong>
+              <p>{t("app.emptyLibraryBody")}</p>
             </div>
           )}
 
-          <nav className="paper-list" aria-label="本地论文">
+          <nav className="paper-list" aria-label={t("app.localPapersAria")}>
             {papers.map((paper) => (
               <button
                 type="button"
@@ -179,8 +194,8 @@ export default function App() {
                   <strong>{paper.name}</strong>
                   <small>
                     {paper.page_count === null
-                      ? "页数读取失败"
-                      : `${paper.page_count} 页`}
+                      ? t("app.pageCountFailed")
+                      : t("app.pageCount", { count: paper.page_count })}
                   </small>
                 </span>
               </button>
@@ -208,8 +223,8 @@ export default function App() {
           </>
         ) : (
           <section className="welcome-state">
-            <h2>导入第一篇论文开始阅读</h2>
-            <p>ResearchCopilot 会保留 PDF 原文和真实页码。</p>
+            <h2>{t("app.welcomeTitle")}</h2>
+            <p>{t("app.welcomeBody")}</p>
           </section>
         )}
       </div>

@@ -6,6 +6,7 @@ import {
   listPaperGlossary,
   type GlossaryEntry,
 } from "../api";
+import { useI18n } from "../i18n-context";
 
 type GlossaryManagerProps = {
   paperId: string;
@@ -20,6 +21,7 @@ export default function GlossaryManager({
   selectionText,
   onChange,
 }: GlossaryManagerProps) {
+  const { t, errorMessage } = useI18n();
   const [entries, setEntries] = useState<GlossaryEntry[]>([]);
   const [source, setSource] = useState("");
   const [translation, setTranslation] = useState("");
@@ -36,7 +38,7 @@ export default function GlossaryManager({
       })
       .catch((reason: unknown) => {
         if (isCurrent) {
-          setError(reason instanceof Error ? reason.message : "术语表加载失败。");
+          setError(errorMessage(reason, "glossary.errorLoad"));
         }
       });
     return () => {
@@ -65,7 +67,7 @@ export default function GlossaryManager({
       setTranslation("");
       onChange();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "术语保存失败。");
+      setError(errorMessage(reason, "glossary.errorSave"));
     } finally {
       setIsBusy(false);
     }
@@ -80,7 +82,7 @@ export default function GlossaryManager({
       setEntries((current) => current.filter((entry) => entry.id !== entryId));
       onChange();
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "术语删除失败。");
+      setError(errorMessage(reason, "glossary.errorDelete"));
     } finally {
       setIsBusy(false);
     }
@@ -93,8 +95,8 @@ export default function GlossaryManager({
 
   return (
     <details className="glossary-manager">
-      <summary>当前论文术语表 · {currentEntries.length} 条</summary>
-      <p>只在本次选区或同页上下文命中时用于翻译；术语不是论文证据。</p>
+      <summary>{t("glossary.summary", { count: currentEntries.length })}</summary>
+      <p>{t("glossary.help")}</p>
       {currentEntries.length > 0 && (
         <ul>
           {currentEntries.map((entry) => (
@@ -103,10 +105,10 @@ export default function GlossaryManager({
               <button
                 type="button"
                 disabled={isBusy}
-                aria-label={`删除术语 ${entry.source}`}
+                aria-label={t("glossary.deleteAria", { term: entry.source })}
                 onClick={() => void deleteEntry(entry.id)}
               >
-                删除
+                {t("glossary.delete")}
               </button>
             </li>
           ))}
@@ -114,18 +116,22 @@ export default function GlossaryManager({
       )}
       <div className="glossary-fields">
         <input
-          aria-label="术语原文"
+          aria-label={t("glossary.sourceAria")}
           value={source}
           onChange={(event) => setSource(event.target.value)}
           maxLength={100}
-          placeholder="英文术语，如 attention head"
+          placeholder={t("glossary.sourcePlaceholder")}
         />
         <input
-          aria-label="指定译名"
+          aria-label={t("glossary.translationAria")}
           value={translation}
           onChange={(event) => setTranslation(event.target.value)}
           maxLength={100}
-          placeholder={targetLanguage === "zh-CN" ? "指定中文译名" : "Preferred English term"}
+          placeholder={
+            targetLanguage === "zh-CN"
+              ? t("glossary.chineseTranslationPlaceholder")
+              : t("glossary.englishTranslationPlaceholder")
+          }
         />
       </div>
       <div className="glossary-actions">
@@ -134,14 +140,14 @@ export default function GlossaryManager({
           disabled={!cleanedSelection || cleanedSelection.length > 100 || isBusy}
           onClick={() => setSource(cleanedSelection)}
         >
-          使用当前选区作原文
+          {t("glossary.useSelection")}
         </button>
         <button
           type="button"
           disabled={!source.trim() || !translation.trim() || isBusy}
           onClick={() => void addEntry()}
         >
-          保存术语
+          {t("glossary.save")}
         </button>
       </div>
       {error && <p className="search-error" role="alert">{error}</p>}

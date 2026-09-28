@@ -3,6 +3,7 @@ import type { MouseEvent as ReactMouseEvent } from "react";
 import { Document, Page } from "react-pdf";
 
 import { paperFileUrl, type Paper } from "../api";
+import { useI18n } from "../i18n-context";
 
 
 export type PdfSelection = {
@@ -23,6 +24,7 @@ export default function PdfReader({
   onPageChange,
   onTextSelection,
 }: PdfReaderProps) {
+  const { language, t } = useI18n();
   const [pageCount, setPageCount] = useState(paper.page_count ?? 0);
   const [scale, setScale] = useState(1.1);
   const [fitWidth, setFitWidth] = useState(true);
@@ -155,7 +157,7 @@ export default function PdfReader({
     : undefined;
 
   return (
-    <section className="reader" aria-label="PDF 阅读区">
+    <section className="reader" aria-label={t("reader.aria")}>
       <header className="reader-toolbar">
         <div className="page-controls">
           <button
@@ -163,31 +165,33 @@ export default function PdfReader({
             onClick={() => goToPage(pageNumber - 1)}
             disabled={pageNumber <= 1}
           >
-            上一页
+            {t("reader.previous")}
           </button>
           <label>
-            第
+            {t("reader.pagePrefix")}
             <input
-              aria-label="当前页码"
+              aria-label={t("reader.currentPageAria")}
               type="number"
               min="1"
               max={pageCount || undefined}
               value={pageNumber}
               onChange={(event) => goToPage(Number(event.target.value))}
             />
-            页
+            {t("reader.pageSuffix")}
           </label>
-          <span className="muted">/ {pageCount || "—"}</span>
+          <span className="muted">
+            {language === "zh-CN" ? "/ " : ""}{pageCount || "—"}
+          </span>
           <button
             type="button"
             onClick={() => goToPage(pageNumber + 1)}
             disabled={pageCount > 0 && pageNumber >= pageCount}
           >
-            下一页
+            {t("reader.next")}
           </button>
         </div>
 
-        <span className="selection-hint">选择原文可发送到右侧</span>
+        <span className="selection-hint">{t("reader.selectionHint")}</span>
 
         <div className="zoom-controls">
           <button
@@ -195,18 +199,18 @@ export default function PdfReader({
             className={continuous ? "active" : ""}
             onClick={() => setContinuous((value) => !value)}
           >
-            {continuous ? "连续" : "单页"}
+            {continuous ? t("reader.continuous") : t("reader.singlePage")}
           </button>
           <button
             type="button"
             className={fitWidth ? "active" : ""}
             onClick={() => setFitWidth((value) => !value)}
           >
-            适合宽度
+            {t("reader.fitWidth")}
           </button>
           <button
             type="button"
-            aria-label="缩小"
+            aria-label={t("reader.zoomOutAria")}
             onClick={() => {
               setFitWidth(false);
               setScale((value) => Math.max(0.6, value - 0.15));
@@ -214,10 +218,10 @@ export default function PdfReader({
           >
             −
           </button>
-          <span>{fitWidth ? "自适应" : `${Math.round(scale * 100)}%`}</span>
+          <span>{fitWidth ? t("reader.autoScale") : `${Math.round(scale * 100)}%`}</span>
           <button
             type="button"
-            aria-label="放大"
+            aria-label={t("reader.zoomInAria")}
             onClick={() => {
               setFitWidth(false);
               setScale((value) => Math.min(2.2, value + 0.15));
@@ -235,8 +239,8 @@ export default function PdfReader({
       >
         <Document
           file={paperFileUrl(paper.id)}
-          loading={<div className="reader-message">正在加载 PDF…</div>}
-          error={<div className="reader-message error">PDF 加载失败。</div>}
+          loading={<div className="reader-message">{t("reader.loading")}</div>}
+          error={<div className="reader-message error">{t("reader.error")}</div>}
           onLoadSuccess={({ numPages }) => {
             setPageCount(numPages);
             if (pageNumber > numPages) {
@@ -278,7 +282,9 @@ export default function PdfReader({
                     }
                   }}
                 />
-                <span className="rendered-page-number">第 {renderedPage} 页</span>
+                <span className="rendered-page-number">
+                  {t("reader.renderedPage", { page: renderedPage })}
+                </span>
               </div>
             ))}
           </div>

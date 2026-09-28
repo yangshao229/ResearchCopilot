@@ -12,17 +12,24 @@ import {
   type SearchResult,
   updateReadingRecord,
 } from "../../api";
+import { useI18n } from "../../i18n-context";
+import { scopeStatus } from "../../ui-status";
+import type { MessageKey, MessageParams } from "../../i18n";
 
-const CATEGORY_OPTIONS: Array<{ value: ReadingCategory; label: string }> = [
-  { value: "unclassified", label: "待分类" },
-  { value: "summary", label: "一句话结论" },
-  { value: "research_problem", label: "研究问题" },
-  { value: "method", label: "方法" },
-  { value: "experiments", label: "实验" },
-  { value: "contributions", label: "贡献" },
-  { value: "limitations", label: "局限" },
-  { value: "open_questions", label: "未解决问题" },
-];
+type Translator = (key: MessageKey, params?: MessageParams) => string;
+
+function categoryOptions(t: Translator): Array<{ value: ReadingCategory; label: string }> {
+  return [
+    { value: "unclassified", label: t("history.categoryUnclassified") },
+    { value: "summary", label: t("history.categorySummary") },
+    { value: "research_problem", label: t("history.categoryResearchProblem") },
+    { value: "method", label: t("history.categoryMethod") },
+    { value: "experiments", label: t("history.categoryExperiments") },
+    { value: "contributions", label: t("history.categoryContributions") },
+    { value: "limitations", label: t("history.categoryLimitations") },
+    { value: "open_questions", label: t("history.categoryOpenQuestions") },
+  ];
+}
 
 export type CompletedSearch = {
   query: string;
@@ -43,6 +50,7 @@ export function HistoryCard({
   onNavigateToPage,
   onSaved,
 }: HistoryCardProps) {
+  const { t, locale, errorMessage } = useI18n();
   const [note, setNote] = useState(record.personal_note);
   const [category, setCategory] = useState<ReadingCategory>(record.category);
   const [isSaving, setIsSaving] = useState(false);
@@ -50,11 +58,11 @@ export function HistoryCard({
 
   const save = async (confirmed: boolean) => {
     if (confirmed && !note.trim()) {
-      setSaveError("请先写下你核对原文后的个人理解。");
+      setSaveError(t("history.noteRequired"));
       return;
     }
     if (confirmed && category === "unclassified") {
-      setSaveError("请选择这条记录进入论文卡片的栏目。");
+      setSaveError(t("history.categoryRequired"));
       return;
     }
 
@@ -71,7 +79,7 @@ export function HistoryCard({
         ),
       );
     } catch (reason: unknown) {
-      setSaveError(reason instanceof Error ? reason.message : "保存失败。");
+      setSaveError(errorMessage(reason, "history.errorSave"));
     } finally {
       setIsSaving(false);
     }
@@ -80,9 +88,11 @@ export function HistoryCard({
   return (
     <article className={record.confirmed ? "history-card confirmed" : "history-card"}>
       <div className="history-heading">
-        <span>{record.confirmed ? "已加入论文卡片" : "AI 草稿 · 待核对"}</span>
+        <span>
+          {record.confirmed ? t("history.confirmed") : t("history.draft")}
+        </span>
         <time dateTime={record.created_at}>
-          {new Date(record.created_at).toLocaleString("zh-CN")}
+          {new Date(record.created_at).toLocaleString(locale)}
         </time>
       </div>
       <h3>{record.question}</h3>
@@ -95,26 +105,26 @@ export function HistoryCard({
               key={citation.evidence_id}
               onClick={() => onNavigateToPage(citation.source_page)}
             >
-              第 {citation.source_page} 页
+              {t("history.page", { page: citation.source_page })}
             </button>
           ))}
         </div>
       )}
-      <label htmlFor={`note-${record.id}`}>我的理解</label>
+      <label htmlFor={`note-${record.id}`}>{t("history.myUnderstanding")}</label>
       <textarea
         id={`note-${record.id}`}
         value={note}
         onChange={(event) => setNote(event.target.value)}
-        placeholder="必填：用自己的话写下理解、疑问或反例……"
+        placeholder={t("history.notePlaceholder")}
         rows={3}
       />
-      <label htmlFor={`category-${record.id}`}>进入论文卡片的栏目</label>
+      <label htmlFor={`category-${record.id}`}>{t("history.categoryLabel")}</label>
       <select
         id={`category-${record.id}`}
         value={category}
         onChange={(event) => setCategory(event.target.value as ReadingCategory)}
       >
-        {CATEGORY_OPTIONS.map((option) => (
+        {categoryOptions(t).map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
           </option>
@@ -127,11 +137,11 @@ export function HistoryCard({
           disabled={isSaving}
           onClick={() => void save(record.confirmed)}
         >
-          {isSaving ? "保存中…" : "保存草稿"}
+          {isSaving ? t("history.saving") : t("history.saveDraft")}
         </button>
         {record.confirmed ? (
           <a href={exportReadingRecordUrl(paperId, record.id)} download>
-            导出 Markdown
+            {t("history.exportMarkdown")}
           </a>
         ) : (
           <button
@@ -140,7 +150,7 @@ export function HistoryCard({
             disabled={isSaving}
             onClick={() => void save(true)}
           >
-            核对完成，加入论文卡片
+            {t("history.confirm")}
           </button>
         )}
       </div>
@@ -161,26 +171,29 @@ export function OutlineView({
   isLoading,
   onNavigateToPage,
 }: OutlineViewProps) {
+  const { t, language } = useI18n();
   return (
     <div className="assistant-content outline-content">
-      <p className="eyebrow">当前论文目录</p>
-      <h2>点击标题跳到 PDF 原文</h2>
+      <p className="eyebrow">{t("outline.eyebrow")}</p>
+      <h2>{t("outline.title")}</h2>
       {isLoading ? (
-        <div className="empty-conversation"><span>正在读取目录…</span></div>
+        <div className="empty-conversation"><span>{t("outline.loading")}</span></div>
       ) : error ? (
         <p className="search-error">{error}</p>
       ) : structure && structure.sections.length > 0 ? (
         <>
           <div className="outline-status">
             <strong>
-              {structure.method === "bookmarks" ? "PDF 自带目录" : "规则推断目录"}
+              {structure.method === "bookmarks"
+                ? t("outline.bookmarks")
+                : t("outline.heuristic")}
             </strong>
-            <span>{structure.sections.length} 个标题</span>
+            <span>{t("outline.headingCount", { count: structure.sections.length })}</span>
           </div>
           {structure.warnings.map((warning) => (
             <p className="outline-warning" key={warning}>{warning}</p>
           ))}
-          <nav className="paper-outline" aria-label="论文目录">
+          <nav className="paper-outline" aria-label={t("outline.aria")}>
             {structure.sections.map((section, index) => (
               <button
                 type="button"
@@ -189,32 +202,40 @@ export function OutlineView({
                 onClick={() => onNavigateToPage(section.source_page)}
               >
                 <span>{section.title}</span>
-                <small>第 {section.source_page} 页</small>
+                <small>{t("outline.page", { page: section.source_page })}</small>
               </button>
             ))}
           </nav>
         </>
       ) : (
         <div className="empty-conversation">
-          <span>无法可靠识别目录</span>
-          <p>{structure?.warnings[0] ?? "这篇 PDF 没有可用书签，也没有清晰的编号标题。"}</p>
+          <span>{t("outline.unavailableTitle")}</span>
+          <p>{structure?.warnings[0] && language === "zh-CN"
+            ? structure.warnings[0]
+            : t("outline.unavailableBody")}</p>
         </div>
       )}
     </div>
   );
 }
 
-function scoreLabel(result: SearchResult, mode: SearchMode): string {
-  if (mode === "keyword") return `命中 ${result.score} 次`;
-  if (mode === "hybrid") return `重排分 ${result.rerank_score.toFixed(4)}`;
-  return `相似度 ${result.score.toFixed(4)}`;
+function scoreLabel(t: Translator, result: SearchResult, mode: SearchMode): string {
+  if (mode === "keyword") return t("evidence.keywordScore", { score: result.score });
+  if (mode === "hybrid") {
+    return t("evidence.hybridScore", { score: result.rerank_score.toFixed(4) });
+  }
+  return t("evidence.semanticScore", { score: result.score.toFixed(4) });
 }
 
-function rankExplanation(result: SearchResult): string {
+function rankExplanation(t: Translator, result: SearchResult): string {
   const ranks = [];
-  if (result.keyword_rank > 0) ranks.push(`关键词 #${result.keyword_rank}`);
-  if (result.semantic_rank > 0) ranks.push(`语义 #${result.semantic_rank}`);
-  if (result.reference_penalty > 0) ranks.push("已降低参考文献权重");
+  if (result.keyword_rank > 0) {
+    ranks.push(t("evidence.keywordRank", { rank: result.keyword_rank }));
+  }
+  if (result.semantic_rank > 0) {
+    ranks.push(t("evidence.semanticRank", { rank: result.semantic_rank }));
+  }
+  if (result.reference_penalty > 0) ranks.push(t("evidence.referencePenalty"));
   return ranks.join(" · ");
 }
 
@@ -231,21 +252,22 @@ export function EvidenceView({
   onUseFullPaper,
   onNavigateToPage,
 }: EvidenceViewProps) {
+  const { t, language } = useI18n();
   return (
     <div className="assistant-content evidence-content">
-      <p className="eyebrow">当前论文证据</p>
+      <p className="eyebrow">{t("evidence.eyebrow")}</p>
       {completedSearch ? (
         <>
           <h2>{completedSearch.query}</h2>
           <p className="assistant-intro">
             {completedSearch.mode === "hybrid"
-              ? "混合检索分别排列关键词与语义结果，再融合名次并降低参考文献列表的权重。"
+              ? t("evidence.hybridHelp")
               : completedSearch.mode === "semantic"
-                ? "语义检索按意思寻找相关段落，分数用于比较本次结果的相对顺序。"
-                : "关键词检索按问题中的词语统计命中次数。"}
+                ? t("evidence.semanticHelp")
+                : t("evidence.keywordHelp")}
           </p>
           <p className="outline-warning" role="status">
-            {completedSearch.scope.note || "全文检索。"}
+            {scopeStatus(completedSearch.scope, language, t)}
           </p>
           {results.length > 0 ? (
             <ol className="evidence-list">
@@ -257,29 +279,29 @@ export function EvidenceView({
                     onClick={() => onNavigateToPage(result.source_page)}
                   >
                     <span className="evidence-meta">
-                      <strong>第 {result.source_page} 页</strong>
-                      <span>{scoreLabel(result, completedSearch.mode)}</span>
+                      <strong>{t("evidence.page", { page: result.source_page })}</strong>
+                      <span>{scoreLabel(t, result, completedSearch.mode)}</span>
                     </span>
                     <span className="evidence-text">{result.text}</span>
                     {completedSearch.mode === "hybrid" && (
-                      <span className="rank-explanation">{rankExplanation(result)}</span>
+                      <span className="rank-explanation">{rankExplanation(t, result)}</span>
                     )}
-                    <span className="jump-label">在 PDF 中查看 →</span>
+                    <span className="jump-label">{t("evidence.viewInPdf")}</span>
                   </button>
                 </li>
               ))}
             </ol>
           ) : (
             <div className="empty-conversation">
-              <span>没有找到可用证据</span>
+              <span>{t("evidence.emptyTitle")}</span>
               <p>
                 {completedSearch.scope.kind === "section"
-                  ? "该章节范围内没有命中证据。可以扩大到全文，或换一种问法。"
-                  : "换一种问法，或切换关键词与语义检索再试一次。"}
+                  ? t("evidence.emptySection")
+                  : t("evidence.emptyFull")}
               </p>
               {completedSearch.scope.kind === "section" && (
                 <button type="button" onClick={onUseFullPaper}>
-                  改为全文检索
+                  {t("evidence.useFullPaper")}
                 </button>
               )}
             </div>
@@ -287,8 +309,8 @@ export function EvidenceView({
         </>
       ) : (
         <div className="empty-conversation">
-          <span>还没有检索记录</span>
-          <p>返回“提问”输入问题，系统会在当前论文内查找证据。</p>
+          <span>{t("evidence.noSearchTitle")}</span>
+          <p>{t("evidence.noSearchBody")}</p>
         </div>
       )}
     </div>
@@ -314,12 +336,13 @@ export function SummaryView({
   onPrepare,
   onExport,
 }: SummaryViewProps) {
+  const { t } = useI18n();
   return (
     <div className="assistant-content summary-content">
-      <p className="eyebrow">结构化论文卡片</p>
-      <h2>只汇总你已确认的理解</h2>
+      <p className="eyebrow">{t("summary.eyebrow")}</p>
+      <h2>{t("summary.title")}</h2>
       <p className="assistant-intro">
-        当前有 {confirmedRecordCount} 条已确认记录。至少需要 2 条，并先在“记录”中选择它们所属的栏目。
+        {t("summary.intro", { count: confirmedRecordCount })}
       </p>
       <button
         type="button"
@@ -327,20 +350,20 @@ export function SummaryView({
         disabled={confirmedRecordCount < 2 || isPreparingCard}
         onClick={onPrepare}
       >
-        {isPreparingCard ? "正在生成预览…" : "生成卡片预览"}
+        {isPreparingCard ? t("summary.preparing") : t("summary.prepare")}
       </button>
       {cardError && <p className="search-error">{cardError}</p>}
       {cardPreview ? (
         <section className="paper-card-preview">
           <div className="card-preview-heading">
-            <strong>Markdown 预览</strong>
-            <span>{cardPreview.confirmed_record_count} 条确认记录</span>
+            <strong>{t("summary.markdownPreview")}</strong>
+            <span>{t("summary.confirmedCount", { count: cardPreview.confirmed_record_count })}</span>
           </div>
           <pre>{cardPreview.markdown}</pre>
           {cardPreview.existing_card && (
             <div className="card-diff">
-              <strong>与已有正式卡片的差异</strong>
-              <pre>{cardPreview.diff || "内容没有变化。"}</pre>
+              <strong>{t("summary.diff")}</strong>
+              <pre>{cardPreview.diff || t("summary.noChanges")}</pre>
             </div>
           )}
           <button
@@ -350,21 +373,21 @@ export function SummaryView({
             onClick={onExport}
           >
             {isExportingCard
-              ? "正在导出…"
+              ? t("summary.exporting")
               : cardPreview.existing_card
-                ? "确认差异并导出为新版本"
-                : "确认内容并导出正式卡片"}
+                ? t("summary.exportVersion")
+                : t("summary.exportCard")}
           </button>
           <p className="card-safety-note">
             {cardPreview.existing_card
-              ? "原卡片不会被修改；新内容将保存为带时间戳的版本。"
-              : "以后再次导出时会先显示差异，不会覆盖本文件。"}
+              ? t("summary.versionSafety")
+              : t("summary.firstExportSafety")}
           </p>
         </section>
       ) : (
         <div className="empty-conversation">
-          <span>尚未生成卡片预览</span>
-          <p>先确认并分类至少两条阅读记录。</p>
+          <span>{t("summary.emptyTitle")}</span>
+          <p>{t("summary.emptyBody")}</p>
         </div>
       )}
     </div>
@@ -378,15 +401,16 @@ export function InfoView({
   paper: Paper;
   confirmedRecordCount: number;
 }) {
+  const { t } = useI18n();
   return (
     <div className="assistant-content info-content">
-      <p className="eyebrow">当前论文信息</p>
+      <p className="eyebrow">{t("info.eyebrow")}</p>
       <h2>{paper.name}</h2>
       <dl>
-        <div><dt>PDF 页数</dt><dd>{paper.page_count ?? "读取失败"}</dd></div>
-        <div><dt>本地位置</dt><dd>data/raw/{paper.relative_path}</dd></div>
-        <div><dt>AI 数据范围</dt><dd>仅发送问题和最多 5 段检索证据，不上传整篇 PDF。</dd></div>
-        <div><dt>笔记状态</dt><dd>{confirmedRecordCount} 条记录已加入论文卡片</dd></div>
+        <div><dt>{t("info.pdfPages")}</dt><dd>{paper.page_count ?? t("info.readFailed")}</dd></div>
+        <div><dt>{t("info.localPath")}</dt><dd>data/raw/{paper.relative_path}</dd></div>
+        <div><dt>{t("info.aiScope")}</dt><dd>{t("info.aiScopeValue")}</dd></div>
+        <div><dt>{t("info.noteStatus")}</dt><dd>{t("info.confirmedRecords", { count: confirmedRecordCount })}</dd></div>
       </dl>
     </div>
   );

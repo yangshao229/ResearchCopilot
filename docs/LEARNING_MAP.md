@@ -406,3 +406,21 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：原文/界面/回答/翻译目标四种语言为何分开、PDF 可抽取文本与扫描件、启发式判断和 `unknown`/`mixed`、用户覆写与旧 JSON 兼容、为何展示属性不应进入译文缓存键、怎样保持论文与会话作用域清楚。
 
 验证结果：完整测试 `97 passed`；前端 TypeScript 与生产构建通过；真实 `sample.pdf` 检测为英文，页面显示和独立设置检查通过。未调用真实 DeepSeek；详细结果见 [M6.5.5 验收](M6_5_5_VALIDATION.md)。
+
+## M6.5.6：完整中英文界面切换
+
+设计依据：[界面语言开源产品拆解](research/2026-09-28-interface-language.md)。
+
+新增文件：
+
+- `docs/research/2026-09-28-interface-language.md`
+- `docs/M6_5_6_VALIDATION.md`
+- `web/src/i18n.ts`、`web/src/i18n-context.tsx`、`web/src/ui-status.ts`
+- `web/src/locales/zh-CN.json`、`web/src/locales/en.json`
+- `tests/test_frontend_i18n.py`
+
+重要修改：`src/research_copilot/paper_reading_guide.py`（阅读建议增加结构化章节名）、`web/src/api.ts`、`web/src/main.tsx`、`web/src/App.tsx`、`web/src/components/PdfReader.tsx`、`AssistantPanel.tsx`、`GlossaryManager.tsx`、`assistant/AssistantViews.tsx`、`web/src/styles.css`、`PROJECT.md`、`PRODUCT_BLUEPRINT.md`、`LEARNING_MAP.md`。
+
+以后学习：UI 语言与原文/回答/翻译目标为何独立，React Context 与 `localStorage`，消息键及占位符，后端中文状态和用户内容的边界，为什么在英文界面保留 PDF 原文和历史会话名，目录一致性测试与实际浏览器验收。
+
+验证结果：完整测试 `100 passed`，TypeScript 和生产构建通过；真实页面中英切换、刷新保留、目录/提问区及原文不变检查通过。未调用真实 DeepSeek；详细结果见 [M6.5.6 验收](M6_5_6_VALIDATION.md)。

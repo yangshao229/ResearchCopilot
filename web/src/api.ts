@@ -37,6 +37,7 @@ export type ConversationSession = {
 export type ReadingQuestion = {
   role: "overview" | "method" | "experiments" | "critique";
   label: string;
+  section_title: string;
   question: string;
   source_page: number;
 };

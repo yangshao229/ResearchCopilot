@@ -21,12 +21,16 @@ import {
   type PaperReadingGuide,
   type PaperStructure,
   type ReadingRecord,
+  type ReadingQuestion,
   type SearchMode,
   type SearchResult,
   type ScopePreference,
   type ReadingAnchor,
   type SelectionContextPreview,
 } from "../api";
+import { useI18n } from "../i18n-context";
+import type { MessageKey } from "../i18n";
+import { scopeStatus, selectionStatus } from "../ui-status";
 import type { PdfSelection } from "./PdfReader";
 import GlossaryManager from "./GlossaryManager";
 import {
@@ -47,6 +51,13 @@ type AssistantTab =
   | "summary"
   | "info";
 
+const guideRoleKeys: Record<ReadingQuestion["role"], MessageKey> = {
+  overview: "assistant.guideRoleOverview",
+  method: "assistant.guideRoleMethod",
+  experiments: "assistant.guideRoleExperiments",
+  critique: "assistant.guideRoleCritique",
+};
+
 type AssistantPanelProps = {
   paper: Paper;
   selection: PdfSelection | null;
@@ -60,6 +71,7 @@ export default function AssistantPanel({
   onClearSelection,
   onNavigateToPage,
 }: AssistantPanelProps) {
+  const { t, language, errorMessage } = useI18n();
   const [activeTab, setActiveTab] = useState<AssistantTab>("outline");
   const [question, setQuestion] = useState("");
   const [searchMode, setSearchMode] = useState<SearchMode>("hybrid");
@@ -126,7 +138,7 @@ export default function AssistantPanel({
       .catch((reason: unknown) => {
         if (isCurrent) {
           setLanguagePolicyError(
-            reason instanceof Error ? reason.message : "论文语言偏好加载失败。",
+            errorMessage(reason, "assistant.errorLanguageLoad"),
           );
         }
       })
@@ -151,7 +163,7 @@ export default function AssistantPanel({
       .catch((reason: unknown) => {
         if (isCurrent) {
           setHistoryError(
-            reason instanceof Error ? reason.message : "阅读记录加载失败。",
+            errorMessage(reason, "assistant.errorHistoryLoad"),
           );
         }
       });
@@ -164,7 +176,7 @@ export default function AssistantPanel({
       .catch((reason: unknown) => {
         if (isCurrent) {
           setSessionError(
-            reason instanceof Error ? reason.message : "阅读会话加载失败。",
+            errorMessage(reason, "assistant.errorSessionsLoad"),
           );
         }
       });
@@ -177,7 +189,7 @@ export default function AssistantPanel({
       .catch((reason: unknown) => {
         if (isCurrent) {
           setGuideError(
-            reason instanceof Error ? reason.message : "论文阅读路线加载失败。",
+            errorMessage(reason, "assistant.errorGuideLoad"),
           );
         }
       });
@@ -202,7 +214,7 @@ export default function AssistantPanel({
       .catch((reason: unknown) => {
         if (isCurrent) {
           setHistoryError(
-            reason instanceof Error ? reason.message : "阅读记录加载失败。",
+            errorMessage(reason, "assistant.errorHistoryLoad"),
           );
         }
       });
@@ -235,7 +247,7 @@ export default function AssistantPanel({
       .catch((reason: unknown) => {
         if (isCurrent) {
           setSelectionPreviewError(
-            reason instanceof Error ? reason.message : "选区上下文读取失败。",
+            errorMessage(reason, "assistant.errorSelectionPreview"),
           );
         }
       })
@@ -260,7 +272,7 @@ export default function AssistantPanel({
       .then(setStructure)
       .catch((reason: unknown) => {
         setStructureError(
-          reason instanceof Error ? reason.message : "论文目录加载失败。",
+          errorMessage(reason, "assistant.errorStructureLoad"),
         );
       })
       .finally(() => setIsLoadingStructure(false));
@@ -282,7 +294,7 @@ export default function AssistantPanel({
       setLanguagePolicy(saved);
     } catch (reason: unknown) {
       setLanguagePolicyError(
-        reason instanceof Error ? reason.message : "论文语言偏好保存失败。",
+        errorMessage(reason, "assistant.errorLanguageSave"),
       );
     } finally {
       setIsSavingLanguagePolicy(false);
@@ -307,7 +319,7 @@ export default function AssistantPanel({
       setCardPreview(await previewPaperCard(paper.id));
     } catch (reason: unknown) {
       setCardError(
-        reason instanceof Error ? reason.message : "论文卡片预览生成失败。",
+        errorMessage(reason, "assistant.errorCardPreview"),
       );
     } finally {
       setIsPreparingCard(false);
@@ -325,7 +337,7 @@ export default function AssistantPanel({
       );
     } catch (reason: unknown) {
       setCardError(
-        reason instanceof Error ? reason.message : "论文卡片导出失败。",
+        errorMessage(reason, "assistant.errorCardExport"),
       );
     } finally {
       setIsExportingCard(false);
@@ -346,7 +358,7 @@ export default function AssistantPanel({
       setNewSessionTitle("");
     } catch (reason: unknown) {
       setSessionError(
-        reason instanceof Error ? reason.message : "阅读会话创建失败。",
+        errorMessage(reason, "assistant.errorSessionCreate"),
       );
     } finally {
       setIsCreatingSession(false);
@@ -354,14 +366,14 @@ export default function AssistantPanel({
   };
 
   const sessionPanel = (
-    <section className="session-panel" aria-label="当前阅读会话">
+    <section className="session-panel" aria-label={t("assistant.sessionAria")}>
       <div className="session-heading">
         <div>
-          <strong>当前会话</strong>
-          <small>范围固定为 {paper.name}</small>
+          <strong>{t("assistant.currentSession")}</strong>
+          <small>{t("assistant.sessionScope", { paper: paper.name })}</small>
         </div>
         <select
-          aria-label="选择阅读会话"
+          aria-label={t("assistant.selectSessionAria")}
           value={activeSessionId}
           onChange={(event) => setActiveSessionId(event.target.value)}
         >
@@ -377,7 +389,7 @@ export default function AssistantPanel({
           type="text"
           value={newSessionTitle}
           maxLength={80}
-          placeholder="新会话，例如：方法精读"
+          placeholder={t("assistant.newSessionPlaceholder")}
           onChange={(event) => setNewSessionTitle(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Enter") {
@@ -391,10 +403,12 @@ export default function AssistantPanel({
           disabled={!newSessionTitle.trim() || isCreatingSession}
           onClick={() => void createSession()}
         >
-          {isCreatingSession ? "创建中…" : "新建"}
+          {isCreatingSession
+            ? t("assistant.creatingSession")
+            : t("assistant.createSession")}
         </button>
       </div>
-      <p>切换会话只切换这篇论文的问答和笔记，不会混入其他论文。</p>
+      <p>{t("assistant.sessionHelp")}</p>
       {sessionError && <p className="search-error">{sessionError}</p>}
     </section>
   );
@@ -424,7 +438,7 @@ export default function AssistantPanel({
       });
       setActiveTab("evidence");
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "证据检索失败。");
+      setError(errorMessage(reason, "assistant.errorSearch"));
     } finally {
       setIsSearching(false);
     }
@@ -452,7 +466,7 @@ export default function AssistantPanel({
         scope: searchExecution.scope,
       });
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "全文检索失败。");
+      setError(errorMessage(reason, "assistant.errorFullSearch"));
     } finally {
       setIsSearching(false);
     }
@@ -499,7 +513,7 @@ export default function AssistantPanel({
       setHistory(sessionHistory);
       setAllHistory(paperHistory);
     } catch (reason: unknown) {
-      setError(reason instanceof Error ? reason.message : "论文回答生成失败。");
+      setError(errorMessage(reason, "assistant.errorAnswer"));
     } finally {
       setIsAnswering(false);
     }
@@ -511,7 +525,7 @@ export default function AssistantPanel({
 
   return (
     <aside className="assistant-panel">
-      <div className="assistant-tabs" role="tablist" aria-label="阅读辅助功能">
+      <div className="assistant-tabs" role="tablist" aria-label={t("assistant.tabsAria")}>
         <button
           type="button"
           className={activeTab === "outline" ? "active" : ""}
@@ -519,7 +533,7 @@ export default function AssistantPanel({
           aria-selected={activeTab === "outline"}
           onClick={() => setActiveTab("outline")}
         >
-          目录
+          {t("assistant.tabOutline")}
         </button>
         <button
           type="button"
@@ -528,7 +542,7 @@ export default function AssistantPanel({
           aria-selected={activeTab === "ask"}
           onClick={() => setActiveTab("ask")}
         >
-          提问
+          {t("assistant.tabAsk")}
         </button>
         <button
           type="button"
@@ -537,7 +551,7 @@ export default function AssistantPanel({
           aria-selected={activeTab === "evidence"}
           onClick={() => setActiveTab("evidence")}
         >
-          证据{results.length > 0 ? ` ${results.length}` : ""}
+          {t("assistant.tabEvidence")}{results.length > 0 ? ` ${results.length}` : ""}
         </button>
         <button
           type="button"
@@ -546,7 +560,7 @@ export default function AssistantPanel({
           aria-selected={activeTab === "history"}
           onClick={() => setActiveTab("history")}
         >
-          笔记{history.length > 0 ? ` ${history.length}` : ""}
+          {t("assistant.tabNotes")}{history.length > 0 ? ` ${history.length}` : ""}
         </button>
         <button
           type="button"
@@ -555,7 +569,7 @@ export default function AssistantPanel({
           aria-selected={activeTab === "summary"}
           onClick={() => setActiveTab("summary")}
         >
-          总结
+          {t("assistant.tabSummary")}
         </button>
         <button
           type="button"
@@ -564,25 +578,23 @@ export default function AssistantPanel({
           aria-selected={activeTab === "info"}
           onClick={() => setActiveTab("info")}
         >
-          信息
+          {t("assistant.tabInfo")}
         </button>
       </div>
 
       {activeTab === "ask" ? (
         <div className="assistant-content">
-          <p className="eyebrow">当前论文</p>
+          <p className="eyebrow">{t("assistant.currentPaper")}</p>
           <h2>{paper.name}</h2>
-          <p className="assistant-intro">
-            页数、目录和标题等结构问题在本地直接回答；内容问题先检索论文证据，再让 DeepSeek 只根据证据回答并标注页码。
-          </p>
+          <p className="assistant-intro">{t("assistant.intro")}</p>
 
           {sessionPanel}
 
-          <section className="reading-guide" aria-label="这篇论文的阅读路线">
+          <section className="reading-guide" aria-label={t("assistant.readingGuideAria")}>
             <div className="reading-guide-heading">
               <div>
-                <strong>这篇论文的阅读路线</strong>
-                <small>根据真实目录生成，不套用固定问题</small>
+                <strong>{t("assistant.readingGuideTitle")}</strong>
+                <small>{t("assistant.readingGuideSubtitle")}</small>
               </div>
             </div>
             {guideError ? (
@@ -595,14 +607,18 @@ export default function AssistantPanel({
                     key={`${item.role}-${item.source_page}-${item.label}`}
                     onClick={() => setQuestion(item.question)}
                   >
-                    <span>{item.label}</span>
-                    <small>第 {item.source_page} 页起 · 点击填入问题</small>
+                    <span>{language === "zh-CN"
+                      ? item.label
+                      : `${t(guideRoleKeys[item.role])} · ${item.section_title}`}</span>
+                    <small>{t("assistant.guideQuestionMeta", { page: item.source_page })}</small>
                   </button>
                 ))}
               </div>
             ) : (
               <p className="guide-unavailable">
-                {guide?.warnings[0] ?? "正在根据论文目录准备建议…"}
+                {guide?.warnings[0]
+                  ? language === "zh-CN" ? guide.warnings[0] : t("status.guideUnavailable")
+                  : t("assistant.guideLoading")}
               </p>
             )}
           </section>
@@ -618,16 +634,16 @@ export default function AssistantPanel({
               <div className="answer-heading">
                 <strong>
                   {answer.provider === "local"
-                    ? "本地结构分析"
+                    ? t("assistant.localAnalysis")
                     : answer.insufficient_evidence
-                      ? "证据不足"
-                      : "论文回答"}
+                      ? t("assistant.insufficientEvidence")
+                      : t("assistant.paperAnswer")}
                 </strong>
                 <span>
                   {answer.cache_hit
-                    ? "已复用本地译文 · 未调用 API"
+                    ? t("assistant.cachedTranslation")
                     : answer.provider === "local"
-                      ? "未调用 API"
+                      ? t("assistant.noApi")
                       : answer.model}
                 </span>
               </div>
@@ -641,21 +657,21 @@ export default function AssistantPanel({
                     void runAnswer("translate", cachedTranslationAnchor, true)
                   }
                 >
-                  重新翻译（将调用 API）
+                  {t("assistant.retranslate")}
                 </button>
               )}
               {answer.scope.note && (
                 <p className="outline-warning" role="status">
-                  {answer.scope.note}
+                  {scopeStatus(answer.scope, language, t)}
                 </p>
               )}
               <div className="answer-section">
-                <h3>解释</h3>
+                <h3>{t("assistant.explanation")}</h3>
                 <p>{answer.explanation}</p>
               </div>
               {answer.citations.length > 0 && (
                 <div className="answer-section">
-                  <h3>原文引用</h3>
+                  <h3>{t("assistant.sourceCitations")}</h3>
                   <div className="citation-list">
                     {answer.citations.map((citation) => (
                       <button
@@ -663,15 +679,18 @@ export default function AssistantPanel({
                         key={citation.evidence_id}
                         onClick={() => onNavigateToPage(citation.source_page)}
                       >
-                        [E{citation.evidence_id}] 第 {citation.source_page} 页
+                        {t("assistant.pageCitation", {
+                          evidence: citation.evidence_id,
+                          page: citation.source_page,
+                        })}
                       </button>
                     ))}
                   </div>
                 </div>
               )}
               <div className="answer-section uncertainty">
-                <h3>不确定性</h3>
-                <p>{answer.uncertainty || "当前回答未标记额外不确定性。"}</p>
+                <h3>{t("assistant.uncertainty")}</h3>
+                <p>{answer.uncertainty || t("assistant.noExtraUncertainty")}</p>
               </div>
             </section>
           )}
@@ -679,14 +698,14 @@ export default function AssistantPanel({
           {selection && (
             <section className="selection-card">
               <div className="selection-card-heading">
-                <strong>已选择第 {selection.sourcePage} 页原文</strong>
+                <strong>{t("assistant.selectedSource", { page: selection.sourcePage })}</strong>
                 <button type="button" onClick={onClearSelection}>
-                  清除
+                  {t("assistant.clear")}
                 </button>
               </div>
               <blockquote>{selection.text}</blockquote>
               {isLoadingSelectionPreview && (
-                <p className="selection-context-note">正在本地读取该页上下文…</p>
+                <p className="selection-context-note">{t("assistant.loadingSelectionContext")}</p>
               )}
               {selectionPreviewError && (
                 <p className="selection-context-note">{selectionPreviewError}</p>
@@ -694,30 +713,40 @@ export default function AssistantPanel({
               {selectionPreview && (
                 <div className="selection-context-preview">
                   <p className="selection-context-note">
-                    若没有可复用译文，将发送给 DeepSeek：第 {selectionPreview.source_page} 页、
-                    {languagePolicy.translation_target === "zh-CN" ? "简体中文" : "English"}译文、
-                    {selectionPreview.method === "selection_only"
-                      ? "仅精确选区"
-                      : `精确选区 + 同页上下文（约 ${selectionPreview.context_text.length} 字符）`}
-                    。{selectionPreview.note}
+                    {t("assistant.selectionSendIntro", {
+                      page: selectionPreview.source_page,
+                      language:
+                        languagePolicy.translation_target === "zh-CN"
+                          ? t("assistant.languageChinese")
+                          : t("assistant.languageEnglish"),
+                      context:
+                        selectionPreview.method === "selection_only"
+                          ? t("assistant.selectionOnly")
+                          : t("assistant.selectionWithContext", {
+                              count: selectionPreview.context_text.length,
+                            }),
+                    })} {selectionStatus(selectionPreview, language, t)}
                   </p>
                   <details>
-                    <summary>查看实际发送的上下文</summary>
-                    <strong>精确选区（唯一翻译内容）</strong>
+                    <summary>{t("assistant.showSentContext")}</summary>
+                    <strong>{t("assistant.exactSelection")}</strong>
                     <blockquote>{selectionPreview.selected_text}</blockquote>
                     {selectionPreview.method !== "selection_only" && (
                       <>
-                        <strong>仅用于消歧的同页上下文</strong>
+                        <strong>{t("assistant.disambiguationContext")}</strong>
                         <blockquote>{selectionPreview.context_text}</blockquote>
                       </>
                     )}
                   </details>
                   <p className="selection-context-note">
-                    本次命中术语：{selectionPreview.glossary_terms.length === 0
-                      ? "无"
-                      : selectionPreview.glossary_terms.map(
-                          (entry) => `${entry.source} → ${entry.translation}`,
-                        ).join("；")}
+                    {t("assistant.glossaryHits", {
+                      terms:
+                        selectionPreview.glossary_terms.length === 0
+                          ? t("assistant.none")
+                          : selectionPreview.glossary_terms
+                              .map((entry) => `${entry.source} → ${entry.translation}`)
+                              .join(" · "),
+                    })}
                   </p>
                   <button
                     type="button"
@@ -730,7 +759,9 @@ export default function AssistantPanel({
                       })
                     }
                   >
-                    {isAnswering ? "正在翻译…" : "翻译选区（优先复用本地译文）"}
+                    {isAnswering
+                      ? t("assistant.translating")
+                      : t("assistant.translateSelection")}
                   </button>
                 </div>
               )}
@@ -738,19 +769,19 @@ export default function AssistantPanel({
                 type="button"
                 onClick={() => useSelection("请用中文解释下面这段原文，并说明理解它需要的前置知识。")}
               >
-                解释
+                {t("assistant.selectionExplain")}
               </button>
               <button
                 type="button"
                 onClick={() => useSelection("请拆解下面原文涉及的公式或符号，说明变量、维度、步骤和直觉。")}
               >
-                公式
+                {t("assistant.selectionFormula")}
               </button>
               <button
                 type="button"
                 onClick={() => useSelection("请基于论文证据回答我对下面原文的疑问：")}
               >
-                提问
+                {t("assistant.selectionAsk")}
               </button>
             </section>
           )}
@@ -762,30 +793,30 @@ export default function AssistantPanel({
             onChange={() => setGlossaryRevision((revision) => revision + 1)}
           />
 
-          <div className="mode-picker" aria-label="检索方式">
+          <div className="mode-picker" aria-label={t("assistant.searchModeAria")}>
             <button
               type="button"
               className={searchMode === "hybrid" ? "selected" : ""}
               onClick={() => setSearchMode("hybrid")}
             >
-              混合检索
-              <small>综合术语与语义，默认推荐</small>
+              {t("assistant.hybridSearch")}
+              <small>{t("assistant.hybridSearchHelp")}</small>
             </button>
             <button
               type="button"
               className={searchMode === "semantic" ? "selected" : ""}
               onClick={() => setSearchMode("semantic")}
             >
-              语义检索
-              <small>中文问题 → 英文原文</small>
+              {t("assistant.semanticSearch")}
+              <small>{t("assistant.semanticSearchHelp")}</small>
             </button>
             <button
               type="button"
               className={searchMode === "keyword" ? "selected" : ""}
               onClick={() => setSearchMode("keyword")}
             >
-              关键词检索
-              <small>精确术语与缩写</small>
+              {t("assistant.keywordSearch")}
+              <small>{t("assistant.keywordSearchHelp")}</small>
             </button>
           </div>
 
@@ -807,10 +838,12 @@ export default function AssistantPanel({
         />
       ) : activeTab === "history" ? (
         <div className="assistant-content history-content">
-          <p className="eyebrow">本地阅读记录</p>
-          <h2>人工确认后再进入正式笔记</h2>
+          <p className="eyebrow">{t("assistant.historyEyebrow")}</p>
+          <h2>{t("assistant.historyTitle")}</h2>
           <p className="assistant-intro">
-            当前显示“{activeSession?.title ?? "默认阅读"}”的记录。核对引用、写下自己的理解并确认后，才能进入整篇论文的正式卡片。
+            {t("assistant.historyIntro", {
+              session: activeSession?.title ?? t("assistant.defaultSession"),
+            })}
           </p>
           {sessionPanel}
           {historyError && <p className="search-error">{historyError}</p>}
@@ -840,8 +873,8 @@ export default function AssistantPanel({
             </div>
           ) : (
             <div className="empty-conversation">
-              <span>还没有问答记录</span>
-              <p>生成第一条带引用回答后，它会自动保存在这里。</p>
+              <span>{t("assistant.emptyHistoryTitle")}</span>
+              <p>{t("assistant.emptyHistoryBody")}</p>
             </div>
           )}
         </div>
@@ -867,28 +900,28 @@ export default function AssistantPanel({
         }}
       >
         <label htmlFor="question">
-          向当前论文提问 · {activeSession?.title ?? "默认阅读"}
+          {t("assistant.askCurrentPaper", {
+            session: activeSession?.title ?? t("assistant.defaultSession"),
+          })}
         </label>
-        <p className="send-scope">
-          结构问题只在本地处理；内容问题发送给 DeepSeek 的只有你的问题和最多 5 段本地证据，不会发送整篇论文。
-        </p>
+        <p className="send-scope">{t("assistant.sendScope")}</p>
         <label className="scope-picker">
-          检索范围
+          {t("assistant.scopeLabel")}
           <select
-            aria-label="检索范围"
+            aria-label={t("assistant.scopeAria")}
             value={scopePreference}
             onChange={(event) =>
               setScopePreference(event.target.value as ScopePreference)
             }
           >
-            <option value="auto">自动识别问题中的章节</option>
-            <option value="full_paper">全文</option>
+            <option value="auto">{t("assistant.scopeAuto")}</option>
+            <option value="full_paper">{t("assistant.scopeFullPaper")}</option>
           </select>
         </label>
-        <div className="language-preferences" aria-label="论文语言偏好">
+        <div className="language-preferences" aria-label={t("assistant.languagePreferencesAria")}>
           <div className="source-language-control">
             <label>
-              论文原文语言
+              {t("assistant.sourceLanguage")}
               <select
                 value={languagePolicy.source_language_override}
                 disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
@@ -899,24 +932,31 @@ export default function AssistantPanel({
                   })
                 }
               >
-                <option value="auto">自动判断</option>
-                <option value="en">手动指定：英文</option>
-                <option value="zh-CN">手动指定：中文</option>
+                <option value="auto">{t("assistant.sourceAuto")}</option>
+                <option value="en">{t("assistant.sourceManualEnglish")}</option>
+                <option value="zh-CN">{t("assistant.sourceManualChinese")}</option>
               </select>
             </label>
             <p className="source-language-hint">
               {languagePolicy.source_language_override === "auto"
-                ? `本地估计：${{
-                    en: "英文",
-                    "zh-CN": "中文",
-                    mixed: "中英混排",
-                    unknown: "无法判断（可能是扫描件）",
-                  }[paper.detected_source_language]}；不改变翻译目标或 PDF 原文。`
-                : `已由你指定为${languagePolicy.source_language_override === "en" ? "英文" : "中文"}；不改变翻译目标或 PDF 原文。`}
+                ? t("assistant.detectedSource", {
+                    language: {
+                      en: t("assistant.sourceEnglish"),
+                      "zh-CN": t("assistant.sourceChinese"),
+                      mixed: t("assistant.sourceMixed"),
+                      unknown: t("assistant.sourceUnknown"),
+                    }[paper.detected_source_language],
+                  })
+                : t("assistant.overriddenSource", {
+                    language:
+                      languagePolicy.source_language_override === "en"
+                        ? t("assistant.sourceEnglish")
+                        : t("assistant.sourceChinese"),
+                  })}
             </p>
           </div>
           <label>
-            回答语言
+            {t("assistant.answerLanguage")}
             <select
               value={languagePolicy.explanation_language}
               disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
@@ -927,13 +967,13 @@ export default function AssistantPanel({
                 })
               }
             >
-              <option value="follow_question">跟随提问语言</option>
-              <option value="zh-CN">简体中文</option>
-              <option value="en">English</option>
+              <option value="follow_question">{t("assistant.followQuestion")}</option>
+              <option value="zh-CN">{t("assistant.languageChinese")}</option>
+              <option value="en">{t("assistant.languageEnglish")}</option>
             </select>
           </label>
           <label>
-            翻译目标
+            {t("assistant.translationTarget")}
             <select
               value={languagePolicy.translation_target}
               disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
@@ -944,12 +984,12 @@ export default function AssistantPanel({
                 })
               }
             >
-              <option value="zh-CN">简体中文</option>
-              <option value="en">English</option>
+              <option value="zh-CN">{t("assistant.languageChinese")}</option>
+              <option value="en">{t("assistant.languageEnglish")}</option>
             </select>
           </label>
           <label>
-            术语
+            {t("assistant.terminology")}
             <select
               value={languagePolicy.terminology_policy}
               disabled={isLoadingLanguagePolicy || isSavingLanguagePolicy}
@@ -960,9 +1000,9 @@ export default function AssistantPanel({
                 })
               }
             >
-              <option value="bilingual_first_use">首次中英对照</option>
-              <option value="preserve_english">保留英文术语</option>
-              <option value="translate_all">尽量翻译</option>
+              <option value="bilingual_first_use">{t("assistant.terminologyBilingual")}</option>
+              <option value="preserve_english">{t("assistant.terminologyEnglish")}</option>
+              <option value="translate_all">{t("assistant.terminologyTranslate")}</option>
             </select>
           </label>
         </div>
@@ -973,7 +1013,7 @@ export default function AssistantPanel({
           id="question"
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="例如：为什么 Transformer 可以并行处理序列？"
+          placeholder={t("assistant.questionPlaceholder")}
           rows={4}
         />
         <div className="question-actions">
@@ -983,14 +1023,16 @@ export default function AssistantPanel({
             disabled={!question.trim() || isBusy}
             onClick={() => void runSearch()}
           >
-            {isSearching ? "正在检索…" : "只查原文证据"}
+            {isSearching
+              ? t("assistant.searching")
+              : t("assistant.searchEvidenceOnly")}
           </button>
           <button type="submit" disabled={!question.trim() || isBusy}>
             {isAnswering
               ? searchMode === "semantic"
-                ? "检索证据并生成回答…"
-                : "生成引用回答…"
-              : "生成带引用回答"}
+                ? t("assistant.searchingAndAnswering")
+                : t("assistant.answering")
+              : t("assistant.generateAnswer")}
           </button>
         </div>
       </form>}
