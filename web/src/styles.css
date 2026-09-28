@@ -518,6 +518,36 @@ button:disabled {
   line-height: 1.8;
 }
 
+.translation-math-notice {
+  padding: 10px 12px;
+  border-left: 3px solid #597c67;
+  background: #eef4ee;
+  color: #344d3e;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.formula-clip {
+  margin: 12px 0;
+  padding: 9px;
+  border: 1px solid #cbd5cc;
+  border-radius: 8px;
+  background: #fff;
+  overflow-x: auto;
+}
+
+.formula-clip figcaption {
+  margin-bottom: 5px;
+  color: #58685e;
+  font-size: 12px;
+}
+
+.formula-clip canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
 .assistant-intro {
   color: #667169;
   font-size: 13px;

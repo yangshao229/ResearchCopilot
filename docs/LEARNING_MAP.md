@@ -442,3 +442,20 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 文本层与扫描件、页码锚点、按需 API 调用和费用边界、服务端缓存键与失效、术语表命中、原文与译文并排、为什么未经布局解析不能宣称逐段精确对齐，以及 DeepSeek 适配器和假模型测试。
 
 验证结果：完整测试 `104 passed`、前端构建通过；真实 `sample.pdf` 页面中英文都出现“翻译当前页”，页码跟随 PDF 翻页。未调用真实 DeepSeek；详见 [M6.6 验收](M6_6_VALIDATION.md)。
+
+## M6.6.1：逐页译文中的公式保护
+
+设计依据：[公式保护开源产品拆解](research/2026-09-28-formula-safe-page-translation.md)。
+
+新增文件：
+
+- `docs/research/2026-09-28-formula-safe-page-translation.md`
+- `docs/M6_6_1_VALIDATION.md`
+- `src/research_copilot/formula_protection.py`
+- `web/src/components/FormulaClip.tsx`
+
+重要修改：`src/research_copilot/page_translation.py`、`tests/test_page_translation.py`、`web/src/api.ts`、`web/src/components/PageTranslationPanel.tsx`、`web/src/locales/zh-CN.json`、`web/src/locales/en.json`、`web/src/styles.css`、`PROJECT.md`。
+
+以后学习：PDF 可见字形与文本层为何不同、公式占位符与失败关闭、PDF 坐标与浏览器裁图、缓存版本、为何“看原图”比猜测 LaTeX 安全、独立公式与行内公式的边界。
+
+验证结果：完整测试 `108 passed`、前端构建通过；真实 `sample.pdf` 第 5 页的 3 处独立公式得到原图区域，数学特殊符号保留原字符。未调用真实 DeepSeek；详见 [M6.6.1 验收](M6_6_1_VALIDATION.md)。

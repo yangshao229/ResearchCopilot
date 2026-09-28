@@ -6,6 +6,7 @@ import {
   type PageTranslation,
 } from "../api";
 import { useI18n } from "../i18n-context";
+import FormulaClip from "./FormulaClip";
 
 type Props = {
   paperId: string;
@@ -104,7 +105,23 @@ export default function PageTranslationPanel({
             <strong>{t("translation.resultTitle", { page: translation.source_page })}</strong>
             <small>{translation.cache_hit ? t("translation.cached") : translation.model}</small>
           </div>
-          <p className="page-translation-text">{translation.translated_text}</p>
+          {translation.formula_regions?.length > 0 && (
+            <p className="translation-math-notice">{t("translation.mathNotice")}</p>
+          )}
+          <div className="page-translation-text">
+            {translation.translated_text
+              .split(/(\[\[RC_FORMULA_\d{2}\]\])/g)
+              .map((part, index) => {
+                const region = translation.formula_regions?.find(
+                  (candidate) => candidate.marker === part,
+                );
+                return region ? (
+                  <FormulaClip key={`${part}-${index}`} paperId={paperId} region={region} />
+                ) : (
+                  <span key={`${part}-${index}`}>{part}</span>
+                );
+              })}
+          </div>
           <p className="translation-source-count">
             {t("translation.sourceCount", { count: translation.source_chars })}
           </p>

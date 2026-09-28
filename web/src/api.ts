@@ -148,6 +148,14 @@ export type PageTranslation = {
   source_chars: number;
   target_language: "zh-CN" | "en";
   translated_text: string;
+  formula_regions: {
+    marker: string;
+    source_page: number;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }[];
   model: string;
   cache_hit: boolean;
 };

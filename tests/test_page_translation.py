@@ -2,15 +2,22 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from pypdf import PdfWriter
+from pypdf import PdfReader, PdfWriter
+from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from research_copilot.domain import LanguagePolicy
+from research_copilot.formula_protection import (
+    protect_math_symbols,
+    restore_math_symbols,
+    validate_formula_markers,
+)
 from research_copilot.language_preferences import PaperLanguagePreferenceStore
 from research_copilot.page_translation import (
     MAX_PAGE_TEXT_CHARS,
     DeepSeekPageTranslationModel,
     PageTranslationService,
 )
+from research_copilot.paper_answer_service import AnswerGenerationError
 from research_copilot.paper_glossary import PaperGlossaryStore
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.web_app import create_app
@@ -141,3 +148,94 @@ def test_deepseek_page_translation_sends_only_selected_page_text() -> None:
     assert len(requests) == 1
     assert "Only page one text." in requests[0][1]["json"]["input"]
     assert "整篇" not in requests[0][1]["json"]["input"]
+
+
+def test_formula_markers_must_be_preserved_exactly_once() -> None:
+    from research_copilot.formula_protection import FormulaRegion
+
+    regions = [
+        FormulaRegion(
+            marker="[[RC_FORMULA_01]]",
+            source_page=5,
+            left=200,
+            top=500,
+            width=250,
+            height=30,
+        )
+    ]
+    assert validate_formula_markers("解释\n[[RC_FORMULA_01]]", regions)
+    assert not validate_formula_markers("解释省略了公式", regions)
+    assert not validate_formula_markers("[[RC_FORMULA_01]] [[RC_FORMULA_01]]", regions)
+    assert not validate_formula_markers("[[RC_FORMULA_02]]", regions)
+
+
+def test_math_symbols_are_restored_exactly_and_missing_markers_fail() -> None:
+    protected, replacements = protect_math_symbols("softmax is set to −∞; β≥0")
+    assert "−∞" not in protected
+    assert "β≥" not in protected
+    assert restore_math_symbols(f"中文解释：{protected}", replacements) == (
+        "中文解释：softmax is set to −∞; β≥0"
+    )
+    assert restore_math_symbols("模型漏掉了符号", replacements) is None
+    assert restore_math_symbols(protected + " [[RC_SYMBOL_01]]", replacements) is None
+
+
+def test_page_translation_keeps_inline_special_glyphs(tmp_path: Path) -> None:
+    service, source, model, _ = make_service(tmp_path)
+    source.pages[1] = "Mask forbidden logits with −∞ before softmax."
+    result = service.translate(tmp_path / "missing.pdf", "paper-one", 1, LanguagePolicy())
+    assert "−∞" not in model.calls[0][0]
+    assert "[[RC_SYMBOL_01]]" in model.calls[0][0]
+    assert "−∞" in result.translated_text
+
+
+def test_display_formula_is_not_sent_to_model_and_remains_page_anchored(tmp_path: Path) -> None:
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})}
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(
+        b"BT /F1 12 Tf 100 600 Td (The network computes an output.) Tj ET "
+        b"BT /F1 12 Tf 100 550 Td (The dimension is dmodel = 512.) Tj ET "
+        b"BT /F1 12 Tf 200 500 Td (FFN(x) = xW1 + b1) Tj ET"
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    pdf_path = tmp_path / "paper.pdf"
+    with pdf_path.open("wb") as output:
+        writer.write(output)
+
+    source_text = PdfReader(pdf_path).pages[0].extract_text()
+    source = FakePageSource()
+    source.pages[1] = source_text
+    model = FakeTranslationModel()
+    service = PageTranslationService(
+        source, PaperGlossaryStore(tmp_path / "glossary"), tmp_path / "translations", model
+    )
+    result = service.translate(pdf_path, "paper-one", 1, LanguagePolicy())
+
+    assert "FFN(x) = xW1 + b1" not in model.calls[0][0]
+    assert "The dimension is dmodel = 512." in model.calls[0][0]
+    assert "[[RC_FORMULA_01]]" in model.calls[0][0]
+    assert result.formula_regions[0].source_page == 1
+    assert result.formula_regions[0].top > 0
+    assert service.translate(pdf_path, "paper-one", 1, LanguagePolicy()).cache_hit
+
+    class DropsFormula(FakeTranslationModel):
+        def translate(self, source_text: str, policy: LanguagePolicy, terms: list) -> str:
+            return "模型遗漏了公式"
+
+    unsafe_service = PageTranslationService(
+        source, PaperGlossaryStore(tmp_path / "glossary"), tmp_path / "unsafe", DropsFormula()
+    )
+    with pytest.raises(AnswerGenerationError, match="公式占位符"):
+        unsafe_service.translate(pdf_path, "paper-one", 1, LanguagePolicy())
+    assert unsafe_service.cached(pdf_path, "paper-one", 1, LanguagePolicy()) is None
