@@ -15,6 +15,8 @@ import {
   savePaperLanguagePreferences,
   type ConversationSession,
   type Paper,
+  type PageLayout,
+  type PageSourceRegion,
   type LanguagePolicy,
   type PaperAnswer,
   type PaperCardPreview,
@@ -66,6 +68,7 @@ type AssistantPanelProps = {
   selection: PdfSelection | null;
   onClearSelection: () => void;
   onNavigateToPage: (pageNumber: number) => void;
+  onFocusSourceRegion: (layout: PageLayout, region: PageSourceRegion) => void;
 };
 
 export default function AssistantPanel({
@@ -74,6 +77,7 @@ export default function AssistantPanel({
   selection,
   onClearSelection,
   onNavigateToPage,
+  onFocusSourceRegion,
 }: AssistantPanelProps) {
   const { t, language, errorMessage } = useI18n();
   const [activeTab, setActiveTab] = useState<AssistantTab>("outline");
@@ -840,6 +844,7 @@ export default function AssistantPanel({
           paperId={paper.id}
           sourcePage={pageNumber}
           targetLanguage={languagePolicy.translation_target}
+          onFocusSourceRegion={onFocusSourceRegion}
         />
       ) : activeTab === "outline" ? (
         <OutlineView

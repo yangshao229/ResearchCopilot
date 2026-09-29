@@ -2,9 +2,12 @@ import { useEffect, useRef, useState } from "react";
 
 import {
   getPageQuality,
+  getPageLayout,
   getPageTranslation,
   translatePage,
+  type PageLayout,
   type PageQuality,
+  type PageSourceRegion,
   type PageTranslation,
 } from "../api";
 import { useI18n } from "../i18n-context";
@@ -14,16 +17,20 @@ type Props = {
   paperId: string;
   sourcePage: number;
   targetLanguage: "zh-CN" | "en";
+  onFocusSourceRegion: (layout: PageLayout, region: PageSourceRegion) => void;
 };
 
 export default function PageTranslationPanel({
   paperId,
   sourcePage,
   targetLanguage,
+  onFocusSourceRegion,
 }: Props) {
   const { t, errorMessage } = useI18n();
   const [translation, setTranslation] = useState<PageTranslation | null>(null);
   const [quality, setQuality] = useState<PageQuality | null>(null);
+  const [layout, setLayout] = useState<PageLayout | null>(null);
+  const [layoutError, setLayoutError] = useState(false);
   const [loading, setLoading] = useState(true);
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +42,8 @@ export default function PageTranslationPanel({
     let active = true;
     setTranslation(null);
     setQuality(null);
+    setLayout(null);
+    setLayoutError(false);
     setError(null);
     setLoading(true);
     setTranslating(false);
@@ -50,6 +59,13 @@ export default function PageTranslationPanel({
       })
       .finally(() => {
         if (active) setLoading(false);
+      });
+    getPageLayout(paperId, sourcePage)
+      .then((result) => {
+        if (active) setLayout(result);
+      })
+      .catch(() => {
+        if (active) setLayoutError(true);
       });
     return () => {
       active = false;
@@ -104,6 +120,31 @@ export default function PageTranslationPanel({
           ))}
           <p>{t("translation.quality.limit")}</p>
         </div>
+      )}
+      {(layout || layoutError) && (
+        <details className="source-region-details">
+          <summary>{t("translation.sourceRegions", { count: layout?.regions.length ?? 0 })}</summary>
+          <p>{t("translation.sourceRegionsLimit")}</p>
+          {layoutError && <p role="alert">{t("translation.sourceRegionsError")}</p>}
+          {layout?.status === "no_text" && <p>{t("translation.sourceRegionsEmpty")}</p>}
+          {layout?.status === "unsupported_rotation" && (
+            <p>{t("translation.sourceRegionsRotated")}</p>
+          )}
+          {layout?.truncated && <p>{t("translation.sourceRegionsTruncated")}</p>}
+          <div className="source-region-list">
+            {layout?.regions.map((region, index) => (
+              <button
+                key={region.id}
+                type="button"
+                onClick={() => onFocusSourceRegion(layout, region)}
+                title={t("translation.focusSourceRegion")}
+              >
+                <small>{t("translation.sourceRegionLabel", { index: index + 1 })}</small>
+                <span>{region.text.replace(/\s+/g, " ").slice(0, 170)}</span>
+              </button>
+            ))}
+          </div>
+        </details>
       )}
       {!loading && !translation && (
         <button

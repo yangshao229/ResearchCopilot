@@ -476,3 +476,20 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 文本层质量与版面顺序为何是不同问题、保守阈值与失败关闭、只读检测 API、前端异步加载和阻断模型调用、零新依赖阶段如何为下一步版面块解析建立基线。
 
 验证结果：完整测试 `110 passed`、前端构建通过；真实 `sample.pdf` 第 5 页识别为需要复核数学内容，未调用真实 DeepSeek。见 [M7.1 验收](M7_1_VALIDATION.md)。
+
+## M7.2：当前页原文区域与 PDF 坐标
+
+设计依据：[原文区域定位开源产品拆解](research/2026-09-29-page-source-anchors.md)。
+
+新增文件：
+
+- `docs/research/2026-09-29-page-source-anchors.md`
+- `docs/M7_2_VALIDATION.md`
+- `src/research_copilot/page_layout.py`
+- `tests/test_page_layout.py`
+
+重要修改：`pyproject.toml`、`uv.lock`、`src/research_copilot/web_app.py`、`web/src/api.ts`、`web/src/App.tsx`、`web/src/components/PdfReader.tsx`、`web/src/components/AssistantPanel.tsx`、`web/src/components/PageTranslationPanel.tsx`、两份界面语言消息表、`web/src/styles.css`、`PROJECT.md`、`docs/PRODUCT_BLUEPRINT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：PDF 坐标和浏览器缩放、高亮覆盖层、按论文和页码隔离状态、pdfplumber 的词位置与阅读顺序并非一回事、Pydantic 输出模型、只读 API、空页和旋转页的显式降级、双栏与数学上下标为何不能用简单的 y 排序解决。
+
+验证结果：完整测试 `113 passed`，前端 TypeScript 与生产构建通过；真实 `sample.pdf` 第 5 页返回 22 个区域，点击 `3.2.3` 标题后可在原 PDF 上看到对应高亮。没有调用 DeepSeek；仍未实现逐块译文对齐。见 [M7.2 验收](M7_2_VALIDATION.md)。

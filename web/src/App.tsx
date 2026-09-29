@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 
-import { importPaper, listPapers, type Paper } from "./api";
+import { importPaper, listPapers, type PageLayout, type PageSourceRegion, type Paper } from "./api";
 import AssistantPanel from "./components/AssistantPanel";
-import PdfReader, { type PdfSelection } from "./components/PdfReader";
+import PdfReader, { type FocusedSourceRegion, type PdfSelection } from "./components/PdfReader";
 import { useI18n, type UiLanguage } from "./i18n-context";
 
 
@@ -26,6 +26,7 @@ export default function App() {
   const [selectedPaperId, setSelectedPaperId] = useState<string | null>(null);
   const [pagesByPaper, setPagesByPaper] = useState<Record<string, number>>({});
   const [selection, setSelection] = useState<PdfSelection | null>(null);
+  const [focusedSourceRegion, setFocusedSourceRegion] = useState<FocusedSourceRegion | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -73,6 +74,12 @@ export default function App() {
       return;
     }
 
+    setFocusedSourceRegion((current) =>
+      current?.paperId === selectedPaper.id && current.source_page === nextPage
+        ? current
+        : null,
+    );
+
     setPagesByPaper((currentPages) => ({
       ...currentPages,
       [selectedPaper.id]: nextPage,
@@ -86,6 +93,18 @@ export default function App() {
   const choosePaper = (paperId: string) => {
     setSelectedPaperId(paperId);
     setSelection(null);
+    setFocusedSourceRegion(null);
+  };
+
+  const focusSourceRegion = (layout: PageLayout, region: PageSourceRegion) => {
+    if (!selectedPaper) return;
+    changePage(region.source_page);
+    setFocusedSourceRegion({
+      ...region,
+      paperId: selectedPaper.id,
+      pageWidth: layout.page_width,
+      pageHeight: layout.page_height,
+    });
   };
 
   const handlePdfImport = async (file: File | undefined) => {
@@ -102,6 +121,7 @@ export default function App() {
       setPapers(loadedPapers);
       setSelectedPaperId(result.paper.id);
       setSelection(null);
+      setFocusedSourceRegion(null);
       setLibraryOpen(true);
       setImportMessage(
         result.imported ? t("app.importSuccess") : t("app.importDuplicate"),
@@ -210,6 +230,7 @@ export default function App() {
               pageNumber={pageNumber}
               onPageChange={changePage}
               onTextSelection={setSelection}
+              focusedSourceRegion={focusedSourceRegion}
             />
             {assistantOpen && (
               <AssistantPanel
@@ -219,6 +240,7 @@ export default function App() {
                 selection={selection}
                 onClearSelection={() => setSelection(null)}
                 onNavigateToPage={changePage}
+                onFocusSourceRegion={focusSourceRegion}
               />
             )}
           </>

@@ -167,6 +167,26 @@ export type PageQuality = {
   issues: ("no_text" | "short_text" | "damaged_text" | "long_text" | "math_review")[];
 };
 
+export type PageSourceRegion = {
+  id: string;
+  source_page: number;
+  text: string;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
+export type PageLayout = {
+  source_page: number;
+  page_width: number;
+  page_height: number;
+  status: "ready" | "no_text" | "unsupported_rotation";
+  order_verified: boolean;
+  truncated: boolean;
+  regions: PageSourceRegion[];
+};
+
 export type ReadingRecord = {
   id: string;
   paper_id: string;
@@ -256,6 +276,19 @@ export async function getPageQuality(
     throw await responseError(response, "页解析质量读取失败");
   }
   return (await response.json()) as PageQuality;
+}
+
+export async function getPageLayout(
+  paperId: string,
+  sourcePage: number,
+): Promise<PageLayout> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/layout`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "页原文位置读取失败");
+  }
+  return (await response.json()) as PageLayout;
 }
 
 export async function translatePage(

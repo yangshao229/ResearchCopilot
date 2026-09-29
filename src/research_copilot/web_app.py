@@ -49,6 +49,7 @@ from research_copilot.paper_library import (
 from research_copilot.paper_reading_guide import PaperReadingGuide
 from research_copilot.page_translation import PageTranslation, PageTranslationService
 from research_copilot.page_quality import PageQuality
+from research_copilot.page_layout import PageLayout, extract_page_layout
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.paper_structure import PaperStructure
 from research_copilot.language_preferences import PaperLanguagePreferenceStore
@@ -340,6 +341,18 @@ def create_app(
             paper_path,
             media_type="application/pdf",
         )
+
+    @app.get(
+        "/api/papers/{paper_id}/pages/{source_page}/layout",
+        response_model=PageLayout,
+    )
+    def get_page_layout(paper_id: str, source_page: int) -> PageLayout:
+        try:
+            return extract_page_layout(library.get_paper_path(paper_id), source_page)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        except ValueError as error:
+            raise HTTPException(status_code=422, detail=str(error)) from error
 
     @app.get(
         "/api/papers/{paper_id}/pages/{source_page}/quality",

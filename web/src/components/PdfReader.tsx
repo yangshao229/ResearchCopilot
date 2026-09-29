@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
 import { Document, Page } from "react-pdf";
 
-import { paperFileUrl, type Paper } from "../api";
+import { paperFileUrl, type PageSourceRegion, type Paper } from "../api";
 import { useI18n } from "../i18n-context";
 
 
@@ -11,11 +11,18 @@ export type PdfSelection = {
   sourcePage: number;
 };
 
+export type FocusedSourceRegion = PageSourceRegion & {
+  paperId: string;
+  pageWidth: number;
+  pageHeight: number;
+};
+
 type PdfReaderProps = {
   paper: Paper;
   pageNumber: number;
   onPageChange: (pageNumber: number) => void;
   onTextSelection: (selection: PdfSelection) => void;
+  focusedSourceRegion: FocusedSourceRegion | null;
 };
 
 export default function PdfReader({
@@ -23,6 +30,7 @@ export default function PdfReader({
   pageNumber,
   onPageChange,
   onTextSelection,
+  focusedSourceRegion,
 }: PdfReaderProps) {
   const { language, t } = useI18n();
   const [pageCount, setPageCount] = useState(paper.page_count ?? 0);
@@ -67,6 +75,29 @@ export default function PdfReader({
       targetElement.scrollIntoView({ block: "start" });
     }
   }, [continuous, pageNumber]);
+
+  useEffect(() => {
+    if (
+      !focusedSourceRegion ||
+      focusedSourceRegion.paperId !== paper.id ||
+      focusedSourceRegion.source_page !== pageNumber
+    ) return;
+    const animationFrame = window.requestAnimationFrame(() => {
+      const stage = stageRef.current;
+      const wrapper = pageElements.current.get(focusedSourceRegion.source_page);
+      const canvas = wrapper?.querySelector("canvas");
+      if (!stage || !wrapper || !canvas) return;
+      const stageTop = stage.getBoundingClientRect().top;
+      const canvasTop = canvas.getBoundingClientRect().top;
+      const relativeTop = focusedSourceRegion.top / focusedSourceRegion.pageHeight;
+      stage.scrollTo({
+        top: stage.scrollTop + canvasTop - stageTop + relativeTop * canvas.clientHeight
+          - stage.clientHeight * 0.3,
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(animationFrame);
+  }, [focusedSourceRegion, pageNumber, paper.id, continuous, stageWidth]);
 
   useEffect(() => {
     const stage = stageRef.current;
@@ -282,6 +313,20 @@ export default function PdfReader({
                     }
                   }}
                 />
+                {focusedSourceRegion?.paperId === paper.id &&
+                  focusedSourceRegion.source_page === renderedPage && (
+                    <div
+                      className="source-region-highlight"
+                      role="img"
+                      aria-label={t("reader.sourceRegionHighlight")}
+                      style={{
+                        left: `${100 * focusedSourceRegion.left / focusedSourceRegion.pageWidth}%`,
+                        top: `${100 * focusedSourceRegion.top / focusedSourceRegion.pageHeight}%`,
+                        width: `${100 * focusedSourceRegion.width / focusedSourceRegion.pageWidth}%`,
+                        height: `${100 * focusedSourceRegion.height / focusedSourceRegion.pageHeight}%`,
+                      }}
+                    />
+                  )}
                 <span className="rendered-page-number">
                   {t("reader.renderedPage", { page: renderedPage })}
                 </span>

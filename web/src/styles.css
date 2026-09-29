@@ -393,6 +393,17 @@ button:disabled {
   scroll-margin-top: 12px;
 }
 
+.source-region-highlight {
+  position: absolute;
+  z-index: 3;
+  box-sizing: border-box;
+  pointer-events: none;
+  border: 2px solid #bd701b;
+  border-radius: 3px;
+  background: rgb(255 185 72 / 24%);
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 82%);
+}
+
 .rendered-page-number {
   position: absolute;
   right: 10px;
@@ -509,6 +520,57 @@ button:disabled {
 .translation-quality-blocked {
   border-color: #ddaa9d;
   background: #fff1ed;
+}
+
+.source-region-details {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #ced8ce;
+  border-radius: 9px;
+  background: #f7faf7;
+  font-size: 12px;
+}
+
+.source-region-details summary {
+  cursor: pointer;
+  color: #315640;
+  font-weight: 700;
+}
+
+.source-region-details p {
+  color: #647169;
+  line-height: 1.55;
+}
+
+.source-region-list {
+  display: grid;
+  gap: 7px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.source-region-list button {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #d2dcd2;
+  border-radius: 7px;
+  background: #fff;
+  color: #2c3930;
+  text-align: left;
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.source-region-list button:hover,
+.source-region-list button:focus-visible {
+  border-color: #688b70;
+  background: #edf5ee;
+}
+
+.source-region-list small {
+  color: #607c64;
 }
 
 .translation-action {
