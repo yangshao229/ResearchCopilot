@@ -183,6 +183,11 @@ export type PageLayout = {
   page_height: number;
   status: "ready" | "no_text" | "unsupported_rotation";
   order_verified: boolean;
+  risk_flags: (
+    | "multi_column_candidate"
+    | "table_rulings_candidate"
+    | "small_glyph_fragments"
+  )[];
   truncated: boolean;
   regions: PageSourceRegion[];
 };

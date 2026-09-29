@@ -531,6 +531,21 @@ button:disabled {
   font-size: 12px;
 }
 
+.layout-risk {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #d9bd8b;
+  border-radius: 9px;
+  background: #fff8e9;
+  color: #594c36;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.layout-risk p {
+  margin: 5px 0 0;
+}
+
 .source-region-details summary {
   cursor: pointer;
   color: #315640;

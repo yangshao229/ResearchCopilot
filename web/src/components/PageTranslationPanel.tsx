@@ -121,6 +121,15 @@ export default function PageTranslationPanel({
           <p>{t("translation.quality.limit")}</p>
         </div>
       )}
+      {layout?.risk_flags.length ? (
+        <div className="layout-risk" role="status">
+          <strong>{t("translation.layoutReviewTitle")}</strong>
+          {layout.risk_flags.map((flag) => (
+            <p key={flag}>{t(`translation.layoutRisk.${flag}`)}</p>
+          ))}
+          <p>{t("translation.layoutOrderUnverified")}</p>
+        </div>
+      ) : null}
       {(layout || layoutError) && (
         <details className="source-region-details">
           <summary>{t("translation.sourceRegions", { count: layout?.regions.length ?? 0 })}</summary>

@@ -493,3 +493,18 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 坐标和浏览器缩放、高亮覆盖层、按论文和页码隔离状态、pdfplumber 的词位置与阅读顺序并非一回事、Pydantic 输出模型、只读 API、空页和旋转页的显式降级、双栏与数学上下标为何不能用简单的 y 排序解决。
 
 验证结果：完整测试 `113 passed`，前端 TypeScript 与生产构建通过；真实 `sample.pdf` 第 5 页返回 22 个区域，点击 `3.2.3` 标题后可在原 PDF 上看到对应高亮。没有调用 DeepSeek；仍未实现逐块译文对齐。见 [M7.2 验收](M7_2_VALIDATION.md)。
+
+## M7.3：复杂版面风险与固定样本评测
+
+设计依据：[阅读顺序与复杂版面风险开源产品拆解](research/2026-09-29-layout-risk-evaluation.md)。
+
+新增文件：
+
+- `docs/research/2026-09-29-layout-risk-evaluation.md`
+- `docs/M7_3_VALIDATION.md`
+
+重要修改：`src/research_copilot/page_layout.py`、`tests/test_page_layout.py`、`web/src/api.ts`、`web/src/components/PageTranslationPanel.tsx`、两份界面语言消息表、`web/src/styles.css`、`PROJECT.md`、`docs/PRODUCT_BLUEPRINT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：为何 PDF 坐标不等于阅读顺序、候选风险与准确识别的区别、双栏的纵向重叠信号、无竖线表格的横线信号、细小字形与上下标、测试中的假 PDF 和真实论文人工真值、为什么“无风险”不能推论为“可以自动对齐”。
+
+验证结果：完整测试 `114 passed`、前端构建通过；真实 `sample.pdf` 第 5 页提示数学碎片，第 6 页提示表格横线与数学碎片。未调用 DeepSeek；没有改变现有译文。见 [M7.3 验收](M7_3_VALIDATION.md)。

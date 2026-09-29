@@ -33,6 +33,9 @@ class PageLayout(BaseModel):
     page_height: float = Field(gt=0)
     status: Literal["ready", "no_text", "unsupported_rotation"]
     order_verified: bool = False
+    risk_flags: list[
+        Literal["multi_column_candidate", "table_rulings_candidate", "small_glyph_fragments"]
+    ] = Field(default_factory=list)
     truncated: bool = False
     regions: list[PageSourceRegion]
 
@@ -132,6 +135,42 @@ def _region(page_number: int, draft: _Draft) -> PageSourceRegion:
     )
 
 
+def _has_parallel_columns(drafts: list[_Draft], page_width: float) -> bool:
+    """Detect only obvious, vertically overlapping left/right text islands."""
+    midpoint = page_width / 2
+    left = [
+        draft for draft in drafts
+        if draft.right < midpoint - 15 and sum(map(len, draft.text_lines)) >= 20
+    ]
+    right = [
+        draft for draft in drafts
+        if draft.left > midpoint + 15 and sum(map(len, draft.text_lines)) >= 20
+    ]
+    return any(
+        min(a.bottom, b.bottom) - max(a.top, b.top) >= 6
+        for a in left for b in right
+    )
+
+
+def _has_table_rulings(page: pdfplumber.page.Page) -> bool:
+    """Flag table-like horizontal rules, not claim table recognition."""
+    rules = [
+        line for line in page.lines
+        if abs(float(line["top"]) - float(line["bottom"])) < 1
+        and float(line["x1"]) - float(line["x0"]) >= float(page.width) * 0.45
+    ]
+    for index, first in enumerate(rules):
+        similar = [
+            later for later in rules[index + 1:]
+            if abs(float(later["x0"]) - float(first["x0"])) <= 8
+            and abs(float(later["x1"]) - float(first["x1"])) <= 8
+            and 8 <= float(later["top"]) - float(first["top"]) <= 180
+        ]
+        if len(similar) >= 2:
+            return True
+    return False
+
+
 def extract_page_layout(pdf_path: Path, source_page: int) -> PageLayout:
     """Locate text in an unrotated page without claiming logical reading order."""
     if source_page < 1:
@@ -150,6 +189,7 @@ def extract_page_layout(pdf_path: Path, source_page: int) -> PageLayout:
                 regions=[],
             )
         lines = _visual_lines(page)
+        table_rulings = _has_table_rulings(page)
 
     valid_lines = [
         line
@@ -200,11 +240,21 @@ def extract_page_layout(pdf_path: Path, source_page: int) -> PageLayout:
                 draft.top = min(draft.top, float(line["top"]))
                 draft.bottom = max(draft.bottom, float(line["bottom"]))
                 break
+    risk_flags: list[
+        Literal["multi_column_candidate", "table_rulings_candidate", "small_glyph_fragments"]
+    ] = []
+    if _has_parallel_columns(drafts, width):
+        risk_flags.append("multi_column_candidate")
+    if table_rulings:
+        risk_flags.append("table_rulings_candidate")
+    if len(small_lines) >= 5:
+        risk_flags.append("small_glyph_fragments")
     return PageLayout(
         source_page=source_page,
         page_width=width,
         page_height=height,
         status="ready" if drafts else "no_text",
+        risk_flags=risk_flags,
         truncated=len(drafts) > MAX_SOURCE_REGIONS,
         regions=[_region(source_page, draft) for draft in drafts[:MAX_SOURCE_REGIONS]],
     )

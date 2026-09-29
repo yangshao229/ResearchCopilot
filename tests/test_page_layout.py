@@ -18,8 +18,9 @@ def create_layout_pdf(path: Path) -> None:
             NameObject("/BaseFont"): NameObject("/Helvetica"),
         }
     )
+    font_reference = writer._add_object(font)
     first[NameObject("/Resources")] = DictionaryObject(
-        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})}
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): font_reference})}
     )
     stream = DecodedStreamObject()
     stream.set_data(
@@ -31,6 +32,36 @@ def create_layout_pdf(path: Path) -> None:
     first[NameObject("/Contents")] = writer._add_object(stream)
     writer.add_blank_page(width=612, height=792)
     writer.add_blank_page(width=612, height=792).rotate(90)
+    table = writer.add_blank_page(width=612, height=792)
+    table[NameObject("/Resources")] = first[NameObject("/Resources")]
+    table_stream = DecodedStreamObject()
+    table_stream.set_data(
+        b"120 670 m 492 670 l S 120 650 m 492 650 l S "
+        b"120 610 m 492 610 l S "
+        b"BT /F1 12 Tf 130 675 Td (Results table) Tj ET"
+    )
+    table[NameObject("/Contents")] = writer._add_object(table_stream)
+    math = writer.add_blank_page(width=612, height=792)
+    math[NameObject("/Resources")] = first[NameObject("/Resources")]
+    math_stream = DecodedStreamObject()
+    math_stream.set_data(
+        b"BT /F1 12 Tf 120 700 Td (A normal sentence describes this page.) Tj ET "
+        + b" ".join(
+            f"BT /F1 6 Tf 280 {670 - index * 12} Td (sub{index}) Tj ET".encode()
+            for index in range(6)
+        )
+    )
+    math[NameObject("/Contents")] = writer._add_object(math_stream)
+    plain = writer.add_blank_page(width=612, height=792)
+    plain[NameObject("/Resources")] = first[NameObject("/Resources")]
+    plain_stream = DecodedStreamObject()
+    plain_stream.set_data(
+        b"BT /F1 12 Tf 50 700 Td "
+        b"(This page has one ordinary paragraph with no table.) Tj ET "
+        b"BT /F1 12 Tf 50 685 Td "
+        b"(The second sentence continues in the same column.) Tj ET"
+    )
+    plain[NameObject("/Contents")] = writer._add_object(plain_stream)
     with path.open("wb") as output:
         writer.write(output)
 
@@ -42,6 +73,7 @@ def test_page_layout_regions_have_stable_page_local_geometry(tmp_path: Path) -> 
     layout = extract_page_layout(pdf_path, 1)
     assert layout.status == "ready"
     assert layout.order_verified is False
+    assert "multi_column_candidate" in layout.risk_flags
     assert layout.page_width == 612
     assert layout.page_height == 792
     assert len(layout.regions) == 2
@@ -69,6 +101,18 @@ def test_page_layout_fails_closed_on_unsupported_pages(tmp_path: Path) -> None:
     assert rotated.regions == []
 
 
+def test_layout_flags_complex_page_candidates_without_claiming_order(tmp_path: Path) -> None:
+    pdf_path = tmp_path / "paper.pdf"
+    create_layout_pdf(pdf_path)
+    table = extract_page_layout(pdf_path, 4)
+    math = extract_page_layout(pdf_path, 5)
+    plain = extract_page_layout(pdf_path, 6)
+    assert table.risk_flags == ["table_rulings_candidate"]
+    assert math.risk_flags == ["small_glyph_fragments"]
+    assert plain.risk_flags == []
+    assert not table.order_verified and not math.order_verified
+
+
 def test_layout_api_is_paper_scoped_and_validates_page(tmp_path: Path) -> None:
     paper_directory = tmp_path / "papers"
     paper_directory.mkdir()
@@ -83,6 +127,6 @@ def test_layout_api_is_paper_scoped_and_validates_page(tmp_path: Path) -> None:
     base = f"/api/papers/{paper_id}/pages"
     assert client.get(f"{base}/1/layout").json()["regions"][0]["source_page"] == 1
     assert client.get(f"{base}/2/layout").json()["status"] == "no_text"
-    assert client.get(f"{base}/4/layout").status_code == 422
+    assert client.get(f"{base}/7/layout").status_code == 422
     assert client.get(f"{base}/0/layout").status_code == 422
     assert client.get("/api/papers/missing/pages/1/layout").status_code == 404
