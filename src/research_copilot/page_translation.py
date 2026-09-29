@@ -9,6 +9,7 @@ from threading import RLock
 from typing import Any, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pypdf import PdfReader
 
 from research_copilot.domain import GlossaryEntry, LanguagePolicy
 from research_copilot.formula_protection import (
@@ -28,6 +29,7 @@ from research_copilot.paper_glossary import (
     glossary_signature,
     match_glossary_entries,
 )
+from research_copilot.page_quality import PageQuality, inspect_page_text
 from research_copilot.storage import atomic_write_json, read_json, validated_json_path
 
 PAGE_TRANSLATION_PROMPT_VERSION = "page-translation-v3-formula-and-symbol-protection"
@@ -168,6 +170,14 @@ class PageTranslationService:
         self.model = model or DeepSeekPageTranslationModel()
         self._lock = RLock()
 
+    def quality(self, pdf_path: Path, paper_id: str, source_page: int) -> PageQuality:
+        if source_page < 1:
+            raise ValueError("PDF 页码必须从 1 开始。")
+        if source_page > len(PdfReader(pdf_path).pages):
+            raise ValueError("PDF 页码超出范围。")
+        source_text = self.page_source.page_text(pdf_path, paper_id, source_page)
+        return inspect_page_text(source_page, source_text, MAX_PAGE_TEXT_CHARS)
+
     def cached(
         self,
         pdf_path: Path,
@@ -240,9 +250,12 @@ class PageTranslationService:
         if source_page < 1:
             raise ValueError("PDF 页码必须从 1 开始。")
         source_text = self.page_source.page_text(pdf_path, paper_id, source_page).strip()
-        if not source_text:
+        quality = inspect_page_text(source_page, source_text, MAX_PAGE_TEXT_CHARS)
+        if "no_text" in quality.issues:
             raise ValueError("这一页没有可抽取的文字；扫描页需要先做 OCR。")
-        if len(source_text) > MAX_PAGE_TEXT_CHARS:
+        if "damaged_text" in quality.issues:
+            raise ValueError("这一页的文字层明显损坏，暂不发送给翻译模型；请划选原文核对。")
+        if "long_text" in quality.issues:
             raise ValueError("这一页文本过长，暂不自动发送；请划选段落翻译。")
         terms = match_glossary_entries(
             self.glossary.list_entries(paper_id),

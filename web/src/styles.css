@@ -484,6 +484,33 @@ button:disabled {
   font-size: 12px;
 }
 
+.translation-quality {
+  display: grid;
+  gap: 4px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #c7d8ca;
+  border-radius: 9px;
+  background: #f1f7f1;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.translation-quality p {
+  margin: 0;
+}
+
+.translation-quality-review,
+.translation-quality-blocked {
+  border-color: #e3d3ad;
+  background: #fff8e9;
+}
+
+.translation-quality-blocked {
+  border-color: #ddaa9d;
+  background: #fff1ed;
+}
+
 .translation-action {
   width: 100%;
   margin-top: 12px;

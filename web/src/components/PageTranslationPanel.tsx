@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 
 import {
+  getPageQuality,
   getPageTranslation,
   translatePage,
+  type PageQuality,
   type PageTranslation,
 } from "../api";
 import { useI18n } from "../i18n-context";
@@ -21,6 +23,7 @@ export default function PageTranslationPanel({
 }: Props) {
   const { t, errorMessage } = useI18n();
   const [translation, setTranslation] = useState<PageTranslation | null>(null);
+  const [quality, setQuality] = useState<PageQuality | null>(null);
   const [loading, setLoading] = useState(true);
   const [translating, setTranslating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,14 +34,16 @@ export default function PageTranslationPanel({
   useEffect(() => {
     let active = true;
     setTranslation(null);
+    setQuality(null);
     setError(null);
     setLoading(true);
     setTranslating(false);
-    getPageTranslation(paperId, sourcePage)
-      .then((cached) => {
-        if (active && cached?.target_language === targetLanguage) {
-          setTranslation(cached);
-        }
+    getPageQuality(paperId, sourcePage)
+      .then(async (report) => {
+        if (active) setQuality(report);
+        if (report.status === "blocked") return;
+        const cached = await getPageTranslation(paperId, sourcePage);
+        if (active && cached?.target_language === targetLanguage) setTranslation(cached);
       })
       .catch((reason: unknown) => {
         if (active) setError(errorMessage(reason, "translation.errorLoad"));
@@ -52,6 +57,7 @@ export default function PageTranslationPanel({
   }, [paperId, sourcePage, targetLanguage]);
 
   const runTranslation = async (refresh: boolean) => {
+    if (!quality || quality.status === "blocked") return;
     const requestedKey = pageKey;
     setTranslating(true);
     setError(null);
@@ -89,11 +95,21 @@ export default function PageTranslationPanel({
       </p>
       {loading && <p role="status">{t("translation.loadingCache")}</p>}
       {error && <p className="search-error" role="alert">{error}</p>}
+      {quality && (
+        <div className={`translation-quality translation-quality-${quality.status}`} role="status">
+          <strong>{t(`translation.quality.${quality.status}`)}</strong>
+          <span>{t("translation.quality.chars", { count: quality.extractable_chars })}</span>
+          {quality.issues.map((issue) => (
+            <p key={issue}>{t(`translation.quality.${issue}`)}</p>
+          ))}
+          <p>{t("translation.quality.limit")}</p>
+        </div>
+      )}
       {!loading && !translation && (
         <button
           type="button"
           className="translation-action"
-          disabled={translating}
+          disabled={translating || !quality || quality.status === "blocked"}
           onClick={() => void runTranslation(false)}
         >
           {translating ? t("translation.translating") : t("translation.translatePage")}
@@ -127,7 +143,7 @@ export default function PageTranslationPanel({
           </p>
           <button
             type="button"
-            disabled={translating}
+            disabled={translating || !quality || quality.status === "blocked"}
             onClick={() => void runTranslation(true)}
           >
             {translating ? t("translation.translating") : t("translation.retranslate")}

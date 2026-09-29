@@ -160,6 +160,13 @@ export type PageTranslation = {
   cache_hit: boolean;
 };
 
+export type PageQuality = {
+  source_page: number;
+  extractable_chars: number;
+  status: "ready" | "review" | "blocked";
+  issues: ("no_text" | "short_text" | "damaged_text" | "long_text" | "math_review")[];
+};
+
 export type ReadingRecord = {
   id: string;
   paper_id: string;
@@ -236,6 +243,19 @@ export async function getPageTranslation(
     throw await responseError(response, "页译文加载失败");
   }
   return (await response.json()) as PageTranslation | null;
+}
+
+export async function getPageQuality(
+  paperId: string,
+  sourcePage: number,
+): Promise<PageQuality> {
+  const response = await fetch(
+    `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/quality`,
+  );
+  if (!response.ok) {
+    throw await responseError(response, "页解析质量读取失败");
+  }
+  return (await response.json()) as PageQuality;
 }
 
 export async function translatePage(

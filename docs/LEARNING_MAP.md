@@ -459,3 +459,20 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 可见字形与文本层为何不同、公式占位符与失败关闭、PDF 坐标与浏览器裁图、缓存版本、为何“看原图”比猜测 LaTeX 安全、独立公式与行内公式的边界。
 
 验证结果：完整测试 `108 passed`、前端构建通过；真实 `sample.pdf` 第 5 页的 3 处独立公式得到原图区域，数学特殊符号保留原字符。未调用真实 DeepSeek；详见 [M6.6.1 验收](M6_6_1_VALIDATION.md)。
+
+## M7.1：逐页 PDF 解析质量关卡
+
+设计依据：[逐页解析质量开源产品拆解](research/2026-09-29-page-extraction-quality.md)。
+
+新增文件：
+
+- `docs/research/2026-09-29-page-extraction-quality.md`
+- `docs/M7_1_VALIDATION.md`
+- `src/research_copilot/page_quality.py`
+- `tests/test_page_quality.py`
+
+重要修改：`src/research_copilot/page_translation.py`、`src/research_copilot/web_app.py`、`web/src/api.ts`、`web/src/components/PageTranslationPanel.tsx`、`web/src/locales/zh-CN.json`、`web/src/locales/en.json`、`web/src/styles.css`、`PROJECT.md`、`docs/PRODUCT_BLUEPRINT.md`。
+
+以后学习：PDF 文本层质量与版面顺序为何是不同问题、保守阈值与失败关闭、只读检测 API、前端异步加载和阻断模型调用、零新依赖阶段如何为下一步版面块解析建立基线。
+
+验证结果：完整测试 `110 passed`、前端构建通过；真实 `sample.pdf` 第 5 页识别为需要复核数学内容，未调用真实 DeepSeek。见 [M7.1 验收](M7_1_VALIDATION.md)。
