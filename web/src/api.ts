@@ -258,53 +258,67 @@ async function responseError(
   return new Error(`${fallback}：${response.status}`);
 }
 
-export async function listPapers(): Promise<Paper[]> {
-  const response = await fetch("/api/papers");
-
+async function requestResponse(
+  url: string,
+  fallback: string,
+  options?: RequestInit,
+): Promise<Response> {
+  const response = await fetch(url, options);
   if (!response.ok) {
-    throw new Error(`论文列表加载失败：${response.status}`);
+    throw await responseError(response, fallback);
   }
+  return response;
+}
 
-  return (await response.json()) as Paper[];
+async function requestJson<T>(
+  url: string,
+  fallback: string,
+  options?: RequestInit,
+): Promise<T> {
+  const response = await requestResponse(url, fallback, options);
+  return (await response.json()) as T;
+}
+
+function jsonOptions(method: string, body: unknown): RequestInit {
+  return {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+}
+
+export async function listPapers(): Promise<Paper[]> {
+  return requestJson<Paper[]>("/api/papers", "论文列表加载失败");
 }
 
 export async function getPageTranslation(
   paperId: string,
   sourcePage: number,
 ): Promise<PageTranslation | null> {
-  const response = await fetch(
+  return requestJson<PageTranslation | null>(
     `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/translation`,
+    "页译文加载失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "页译文加载失败");
-  }
-  return (await response.json()) as PageTranslation | null;
 }
 
 export async function getPageQuality(
   paperId: string,
   sourcePage: number,
 ): Promise<PageQuality> {
-  const response = await fetch(
+  return requestJson<PageQuality>(
     `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/quality`,
+    "页解析质量读取失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "页解析质量读取失败");
-  }
-  return (await response.json()) as PageQuality;
 }
 
 export async function getPageLayout(
   paperId: string,
   sourcePage: number,
 ): Promise<PageLayout> {
-  const response = await fetch(
+  return requestJson<PageLayout>(
     `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/layout`,
+    "页原文位置读取失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "页原文位置读取失败");
-  }
-  return (await response.json()) as PageLayout;
 }
 
 export async function translatePage(
@@ -312,54 +326,38 @@ export async function translatePage(
   sourcePage: number,
   refresh = false,
 ): Promise<PageTranslation> {
-  const response = await fetch(
+  return requestJson<PageTranslation>(
     `/api/papers/${encodeURIComponent(paperId)}/pages/${sourcePage}/translation`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh }),
-    },
+    "当前页翻译失败",
+    jsonOptions("POST", { refresh }),
   );
-  if (!response.ok) {
-    throw await responseError(response, "当前页翻译失败");
-  }
-  return (await response.json()) as PageTranslation;
 }
 
 export async function getPaperLanguagePreferences(
   paperId: string,
 ): Promise<LanguagePolicy> {
-  const response = await fetch(
+  return requestJson<LanguagePolicy>(
     `/api/papers/${encodeURIComponent(paperId)}/language`,
+    "论文语言偏好加载失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "论文语言偏好加载失败");
-  }
-  return (await response.json()) as LanguagePolicy;
 }
 
 export async function savePaperLanguagePreferences(
   paperId: string,
   policy: LanguagePolicy,
 ): Promise<LanguagePolicy> {
-  const response = await fetch(
+  return requestJson<LanguagePolicy>(
     `/api/papers/${encodeURIComponent(paperId)}/language`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(policy),
-    },
+    "论文语言偏好保存失败",
+    jsonOptions("PUT", policy),
   );
-  if (!response.ok) {
-    throw await responseError(response, "论文语言偏好保存失败");
-  }
-  return (await response.json()) as LanguagePolicy;
 }
 
 export async function listPaperGlossary(paperId: string): Promise<GlossaryEntry[]> {
-  const response = await fetch(`/api/papers/${encodeURIComponent(paperId)}/glossary`);
-  if (!response.ok) throw await responseError(response, "论文术语表加载失败");
-  return (await response.json()) as GlossaryEntry[];
+  return requestJson<GlossaryEntry[]>(
+    `/api/papers/${encodeURIComponent(paperId)}/glossary`,
+    "论文术语表加载失败",
+  );
 }
 
 export async function addPaperGlossaryEntry(
@@ -368,41 +366,37 @@ export async function addPaperGlossaryEntry(
   translation: string,
   targetLanguage: GlossaryEntry["target_language"],
 ): Promise<GlossaryEntry> {
-  const response = await fetch(`/api/papers/${encodeURIComponent(paperId)}/glossary`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source, translation, target_language: targetLanguage }),
-  });
-  if (!response.ok) throw await responseError(response, "论文术语保存失败");
-  return (await response.json()) as GlossaryEntry;
+  return requestJson<GlossaryEntry>(
+    `/api/papers/${encodeURIComponent(paperId)}/glossary`,
+    "论文术语保存失败",
+    jsonOptions("POST", { source, translation, target_language: targetLanguage }),
+  );
 }
 
 export async function deletePaperGlossaryEntry(
   paperId: string,
   entryId: string,
 ): Promise<void> {
-  const response = await fetch(
+  await requestResponse(
     `/api/papers/${encodeURIComponent(paperId)}/glossary/${encodeURIComponent(entryId)}`,
+    "论文术语删除失败",
     { method: "DELETE" },
   );
-  if (!response.ok) throw await responseError(response, "论文术语删除失败");
 }
 
 export async function importPaper(file: File): Promise<PaperImportResult> {
-  const response = await fetch("/api/papers/import", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/pdf",
-      "X-PDF-Filename": encodeURIComponent(file.name),
+  return requestJson<PaperImportResult>(
+    "/api/papers/import",
+    "PDF 导入失败",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/pdf",
+        "X-PDF-Filename": encodeURIComponent(file.name),
+      },
+      body: file,
     },
-    body: file,
-  });
-
-  if (!response.ok) {
-    throw await responseError(response, "PDF 导入失败");
-  }
-
-  return (await response.json()) as PaperImportResult;
+  );
 }
 
 export function paperFileUrl(paperId: string): string {
@@ -412,55 +406,39 @@ export function paperFileUrl(paperId: string): string {
 export async function getPaperStructure(
   paperId: string,
 ): Promise<PaperStructure> {
-  const response = await fetch(
+  return requestJson<PaperStructure>(
     `/api/papers/${encodeURIComponent(paperId)}/structure`,
+    "论文目录加载失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "论文目录加载失败");
-  }
-  return (await response.json()) as PaperStructure;
 }
 
 export async function getPaperReadingGuide(
   paperId: string,
 ): Promise<PaperReadingGuide> {
-  const response = await fetch(
+  return requestJson<PaperReadingGuide>(
     `/api/papers/${encodeURIComponent(paperId)}/guide`,
+    "论文阅读路线加载失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "论文阅读路线加载失败");
-  }
-  return (await response.json()) as PaperReadingGuide;
 }
 
 export async function listConversationSessions(
   paperId: string,
 ): Promise<ConversationSession[]> {
-  const response = await fetch(
+  return requestJson<ConversationSession[]>(
     `/api/papers/${encodeURIComponent(paperId)}/sessions`,
+    "阅读会话加载失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "阅读会话加载失败");
-  }
-  return (await response.json()) as ConversationSession[];
 }
 
 export async function createConversationSession(
   paperId: string,
   title: string,
 ): Promise<ConversationSession> {
-  const response = await fetch(
+  return requestJson<ConversationSession>(
     `/api/papers/${encodeURIComponent(paperId)}/sessions`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title }),
-    },
+    "阅读会话创建失败",
+    jsonOptions("POST", { title }),
   );
-  if (!response.ok) {
-    throw await responseError(response, "阅读会话创建失败");
-  }
-  return (await response.json()) as ConversationSession;
 }
 
 export async function searchPaper(
@@ -470,25 +448,11 @@ export async function searchPaper(
   limit = 5,
   scopePreference: ScopePreference = "auto",
 ): Promise<PaperSearchExecution> {
-  const response = await fetch(
+  const response = await requestResponse(
     `/api/papers/${encodeURIComponent(paperId)}/search`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        mode,
-        limit,
-        scope_preference: scopePreference,
-      }),
-    },
+    "证据检索失败",
+    jsonOptions("POST", { query, mode, limit, scope_preference: scopePreference }),
   );
-
-  if (!response.ok) {
-    throw await responseError(response, "证据检索失败");
-  }
 
   const scopeHeader = response.headers.get("X-Reading-Scope");
   const scope = scopeHeader
@@ -519,32 +483,21 @@ export async function answerPaper(
   anchor?: ReadingAnchor,
   refreshTranslation = false,
 ): Promise<PaperAnswer> {
-  const response = await fetch(
+  return requestJson<PaperAnswer>(
     `/api/papers/${encodeURIComponent(paperId)}/answer`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        query,
-        mode,
-        limit,
-        session_id: sessionId,
-        scope_preference: scopePreference,
-        task,
-        ...(anchor ? { anchor } : {}),
-        ...(refreshTranslation ? { refresh_translation: true } : {}),
-        ...(language ? { language } : {}),
-      }),
-    },
+    "论文回答生成失败",
+    jsonOptions("POST", {
+      query,
+      mode,
+      limit,
+      session_id: sessionId,
+      scope_preference: scopePreference,
+      task,
+      ...(anchor ? { anchor } : {}),
+      ...(refreshTranslation ? { refresh_translation: true } : {}),
+      ...(language ? { language } : {}),
+    }),
   );
-
-  if (!response.ok) {
-    throw await responseError(response, "论文回答生成失败");
-  }
-
-  return (await response.json()) as PaperAnswer;
 }
 
 export async function previewSelectionContext(
@@ -553,22 +506,15 @@ export async function previewSelectionContext(
   selectedText: string,
   targetLanguage: GlossaryEntry["target_language"] = "zh-CN",
 ): Promise<SelectionContextPreview> {
-  const response = await fetch(
+  return requestJson<SelectionContextPreview>(
     `/api/papers/${encodeURIComponent(paperId)}/selection-context`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        source_page: sourcePage,
-        selected_text: selectedText,
-        target_language: targetLanguage,
-      }),
-    },
+    "选区上下文读取失败",
+    jsonOptions("POST", {
+      source_page: sourcePage,
+      selected_text: selectedText,
+      target_language: targetLanguage,
+    }),
   );
-  if (!response.ok) {
-    throw await responseError(response, "选区上下文读取失败");
-  }
-  return (await response.json()) as SelectionContextPreview;
 }
 
 export async function listReadingHistory(
@@ -578,13 +524,10 @@ export async function listReadingHistory(
   const query = sessionId
     ? `?session_id=${encodeURIComponent(sessionId)}`
     : "";
-  const response = await fetch(
+  return requestJson<ReadingRecord[]>(
     `/api/papers/${encodeURIComponent(paperId)}/history${query}`,
+    "阅读记录加载失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "阅读记录加载失败");
-  }
-  return (await response.json()) as ReadingRecord[];
 }
 
 export async function updateReadingRecord(
@@ -594,22 +537,15 @@ export async function updateReadingRecord(
   personalNote: string,
   category: ReadingCategory,
 ): Promise<ReadingRecord> {
-  const response = await fetch(
+  return requestJson<ReadingRecord>(
     `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}`,
-    {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        confirmed,
-        personal_note: personalNote,
-        category,
-      }),
-    },
+    "阅读记录保存失败",
+    jsonOptions("PATCH", {
+      confirmed,
+      personal_note: personalNote,
+      category,
+    }),
   );
-  if (!response.ok) {
-    throw await responseError(response, "阅读记录保存失败");
-  }
-  return (await response.json()) as ReadingRecord;
 }
 
 export function exportReadingRecordUrl(
@@ -622,13 +558,10 @@ export function exportReadingRecordUrl(
 export async function previewPaperCard(
   paperId: string,
 ): Promise<PaperCardPreview> {
-  const response = await fetch(
+  return requestJson<PaperCardPreview>(
     `/api/papers/${encodeURIComponent(paperId)}/card/preview`,
+    "论文卡片预览生成失败",
   );
-  if (!response.ok) {
-    throw await responseError(response, "论文卡片预览生成失败");
-  }
-  return (await response.json()) as PaperCardPreview;
 }
 
 export async function downloadPaperCard(
@@ -636,13 +569,11 @@ export async function downloadPaperCard(
   paperName: string,
   newVersion: boolean,
 ): Promise<void> {
-  const response = await fetch(
+  const response = await requestResponse(
     `/api/papers/${encodeURIComponent(paperId)}/card/export?new_version=${newVersion}`,
+    "论文卡片导出失败",
     { method: "POST" },
   );
-  if (!response.ok) {
-    throw await responseError(response, "论文卡片导出失败");
-  }
 
   const downloadUrl = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");

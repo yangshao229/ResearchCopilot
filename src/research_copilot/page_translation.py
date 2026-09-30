@@ -205,21 +205,18 @@ class PageTranslationService:
         if report.status == "blocked":
             return report
         audit = inspect_column_order(pdf_path, source_page)
-        if audit.status == "interleaved":
-            return PageQuality(
-                source_page=source_page,
-                extractable_chars=report.extractable_chars,
-                status="blocked",
-                issues=[*report.issues, "column_order_mismatch"],
-            )
-        if audit.status == "column_candidate":
-            return PageQuality(
-                source_page=source_page,
-                extractable_chars=report.extractable_chars,
-                status="review",
-                issues=[*report.issues, "column_order_review"],
-            )
-        return report
+        if audit.status not in ("interleaved", "column_candidate"):
+            return report
+        blocked = audit.status == "interleaved"
+        return PageQuality(
+            source_page=source_page,
+            extractable_chars=report.extractable_chars,
+            status="blocked" if blocked else "review",
+            issues=[
+                *report.issues,
+                "column_order_mismatch" if blocked else "column_order_review",
+            ],
+        )
 
     def cached(
         self,
