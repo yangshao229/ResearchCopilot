@@ -128,6 +128,8 @@ class DeepSeekPageTranslationModel:
                     "instructions": instructions,
                     "input": content,
                     "max_output_tokens": 8000,
+                    # Page translation needs output capacity, not hidden reasoning tokens.
+                    "reasoning": {"effort": "none"},
                     "text": {
                         "format": {
                             "type": "json_schema",
@@ -143,7 +145,18 @@ class DeepSeekPageTranslationModel:
                 raise AnswerGenerationError(
                     f"DeepSeek API returned {response.status_code}."
                 )
+            if response_body.get("status") == "incomplete":
+                reason = (response_body.get("incomplete_details") or {}).get("reason")
+                if reason == "max_output_tokens":
+                    raise AnswerGenerationError(
+                        "DeepSeek 输出达到 token 上限，译文未保存；请重试或划选较短段落翻译。"
+                    )
+                raise AnswerGenerationError("DeepSeek 未完成译文，结果未保存。")
+            if response_body.get("status") == "failed":
+                raise AnswerGenerationError("DeepSeek 生成译文失败，结果未保存。")
             output = self._delegate._extract_output_text(response_body)
+            if not output.strip():
+                raise AnswerGenerationError("DeepSeek 返回了空译文，结果未保存。")
             translation = _TranslationDraft.model_validate_json(output).translated_text.strip()
             if not translation:
                 raise AnswerGenerationError("DeepSeek returned an empty translation.")

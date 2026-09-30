@@ -508,3 +508,13 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：为何 PDF 坐标不等于阅读顺序、候选风险与准确识别的区别、双栏的纵向重叠信号、无竖线表格的横线信号、细小字形与上下标、测试中的假 PDF 和真实论文人工真值、为什么“无风险”不能推论为“可以自动对齐”。
 
 验证结果：完整测试 `114 passed`、前端构建通过；真实 `sample.pdf` 第 5 页提示数学碎片，第 6 页提示表格横线与数学碎片。未调用 DeepSeek；没有改变现有译文。见 [M7.3 验收](M7_3_VALIDATION.md)。
+
+## M7.3 后续修复：逐页翻译输出被推理 token 耗尽
+
+重要修改：`src/research_copilot/page_translation.py`、`tests/test_page_translation.py`、`PROJECT.md`、`docs/LEARNING_MAP.md`；无新增代码文件，也未改变 PDF、译文缓存格式或前端交互。
+
+故障根因：真实第 7 页的 DeepSeek Responses API 返回 HTTP 200，但 `status=incomplete`、`reason=max_output_tokens`，8,000 个输出 token 全用于推理，`output_text` 为空。修复后逐页翻译显式设置 `reasoning.effort=none`，并在响应截断或为空时给出明确错误，不将失败结果写入缓存。依据：[DeepSeek Responses API 文档](https://api-docs.deepseek.com/api/create-response/)。
+
+以后学习：HTTP 成功与模型生成成功为何不同、推理 token 与可见输出共享预算、接口状态和 JSON Schema 双层校验、用真实 API 诊断但不输出密钥或正文、为什么单元测试通过还需端到端验证。
+
+验证结果：完整测试 `115 passed`、前端构建通过；真实 `sample.pdf` 第 7 页修复前 `incomplete`、可见输出 0 字；修复后 `completed`、推理 token 0、返回约 1,300 字译文。阅读器中实际显示中文译文和两个独立公式原图，刷新后直接从本地缓存读取。行内公式与表格仍未可靠还原。

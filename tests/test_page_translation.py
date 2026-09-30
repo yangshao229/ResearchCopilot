@@ -148,6 +148,25 @@ def test_deepseek_page_translation_sends_only_selected_page_text() -> None:
     assert len(requests) == 1
     assert "Only page one text." in requests[0][1]["json"]["input"]
     assert "整篇" not in requests[0][1]["json"]["input"]
+    assert requests[0][1]["json"]["reasoning"] == {"effort": "none"}
+
+
+def test_incomplete_deepseek_translation_reports_token_limit_instead_of_bad_json() -> None:
+    class Response:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {
+                "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "output": [],
+            }
+
+    model = DeepSeekPageTranslationModel(
+        api_key="test-key", post=lambda _url, **_kwargs: Response()
+    )
+    with pytest.raises(AnswerGenerationError, match="token 上限"):
+        model.translate("Only page one text.", LanguagePolicy(), [])
 
 
 def test_formula_markers_must_be_preserved_exactly_once() -> None:
