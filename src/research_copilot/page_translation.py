@@ -29,6 +29,7 @@ from research_copilot.paper_glossary import (
     glossary_signature,
     match_glossary_entries,
 )
+from research_copilot.column_order import inspect_column_order
 from research_copilot.page_quality import PageQuality, inspect_page_text
 from research_copilot.storage import atomic_write_json, read_json, validated_json_path
 from research_copilot.table_protection import (
@@ -196,7 +197,29 @@ class PageTranslationService:
         if source_page > len(PdfReader(pdf_path).pages):
             raise ValueError("PDF 页码超出范围。")
         source_text = self.page_source.page_text(pdf_path, paper_id, source_page)
-        return inspect_page_text(source_page, source_text, MAX_PAGE_TEXT_CHARS)
+        return self._quality(pdf_path, source_page, source_text)
+
+    @staticmethod
+    def _quality(pdf_path: Path, source_page: int, source_text: str) -> PageQuality:
+        report = inspect_page_text(source_page, source_text, MAX_PAGE_TEXT_CHARS)
+        if report.status == "blocked":
+            return report
+        audit = inspect_column_order(pdf_path, source_page)
+        if audit.status == "interleaved":
+            return PageQuality(
+                source_page=source_page,
+                extractable_chars=report.extractable_chars,
+                status="blocked",
+                issues=[*report.issues, "column_order_mismatch"],
+            )
+        if audit.status == "column_candidate":
+            return PageQuality(
+                source_page=source_page,
+                extractable_chars=report.extractable_chars,
+                status="review",
+                issues=[*report.issues, "column_order_review"],
+            )
+        return report
 
     def cached(
         self,
@@ -272,13 +295,15 @@ class PageTranslationService:
         if source_page < 1:
             raise ValueError("PDF 页码必须从 1 开始。")
         source_text = self.page_source.page_text(pdf_path, paper_id, source_page).strip()
-        quality = inspect_page_text(source_page, source_text, MAX_PAGE_TEXT_CHARS)
+        quality = self._quality(pdf_path, source_page, source_text)
         if "no_text" in quality.issues:
             raise ValueError("这一页没有可抽取的文字；扫描页需要先做 OCR。")
         if "damaged_text" in quality.issues:
             raise ValueError("这一页的文字层明显损坏，暂不发送给翻译模型；请划选原文核对。")
         if "long_text" in quality.issues:
             raise ValueError("这一页文本过长，暂不自动发送；请划选段落翻译。")
+        if "column_order_mismatch" in quality.issues:
+            raise ValueError("这一页的 PDF 文字反复在左右栏间交错，已阻止整页翻译；请划选单栏或段落翻译。")
         terms = match_glossary_entries(
             self.glossary.list_entries(paper_id),
             source_text,

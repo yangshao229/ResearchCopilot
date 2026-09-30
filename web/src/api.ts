@@ -167,7 +167,15 @@ export type PageQuality = {
   source_page: number;
   extractable_chars: number;
   status: "ready" | "review" | "blocked";
-  issues: ("no_text" | "short_text" | "damaged_text" | "long_text" | "math_review")[];
+  issues: (
+    | "no_text"
+    | "short_text"
+    | "damaged_text"
+    | "long_text"
+    | "math_review"
+    | "column_order_review"
+    | "column_order_mismatch"
+  )[];
 };
 
 export type PageSourceRegion = {

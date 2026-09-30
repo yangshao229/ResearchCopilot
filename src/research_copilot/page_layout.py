@@ -80,11 +80,21 @@ def _visual_lines(page: pdfplumber.page.Page) -> list[dict[str, object]]:
             candidate.append(word)
     visual_lines: list[dict[str, object]] = []
     gutter = max(24.0, float(page.width) * 0.06)
+    midpoint = float(page.width) / 2
     for row in rows:
         row.sort(key=lambda word: float(word["x0"]))
         segments: list[list[dict[str, object]]] = []
         for word in row:
-            if not segments or float(word["x0"]) - float(segments[-1][-1]["x1"]) > gutter:
+            gap = (
+                float(word["x0"]) - float(segments[-1][-1]["x1"])
+                if segments else 0.0
+            )
+            crosses_center_gutter = bool(segments) and (
+                float(segments[-1][-1]["x1"]) < midpoint - 3
+                and float(word["x0"]) > midpoint + 3
+                and gap >= 10
+            )
+            if not segments or gap > gutter or crosses_center_gutter:
                 segments.append([word])
             else:
                 segments[-1].append(word)

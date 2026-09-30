@@ -9,7 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 PageQualityStatus = Literal["ready", "review", "blocked"]
 PageQualityIssue = Literal[
-    "no_text", "short_text", "damaged_text", "long_text", "math_review"
+    "no_text", "short_text", "damaged_text", "long_text", "math_review",
+    "column_order_review", "column_order_mismatch",
 ]
 
 _MATH_GLYPHS = re.compile(r"[∑∏∫√≤≥≠≈∈∉⊂⊆⊕⊗∂∇∞]")

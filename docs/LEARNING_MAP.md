@@ -542,3 +542,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 视觉表格与线性文字层的差别、保守几何检测、表题与单元格边界、拒绝不唯一匹配、占位符失败关闭、复用同一 PDF 裁图组件、窄栏横向查看、为何没有行列评测时不应伪造表格译文。
 
 验证结果：完整测试 `121 passed`、前端构建通过；真实 `sample.pdf` 第 6 页只把表格单元文字替换为本地原图，表题及后续正文译为中文，刷新后读取缓存。实测调用 DeepSeek 一次；表内单元格仍未翻译。见 [M7.4b 验收](M7_4B_VALIDATION.md)。
+
+## M7.4c：双栏页抽取顺序关卡
+
+设计依据：[双栏页阅读顺序开源产品拆解](research/2026-09-30-column-reading-order.md)。
+
+新增文件：`docs/research/2026-09-30-column-reading-order.md`、`docs/M7_4C_VALIDATION.md`、`src/research_copilot/column_order.py`、`tests/test_column_order.py`。
+
+重要修改：`src/research_copilot/page_quality.py`、`src/research_copilot/page_translation.py`、`src/research_copilot/page_layout.py`、`web/src/api.ts`、两份界面语言消息表、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：PDF 绘制顺序与人类阅读顺序、文字片段坐标、双栏候选的保守判断、通栏表格/说明的误报、为何多次回跳可以阻断但“没有回跳”不能证明正确、前后端双重门槛、窄中缝的原文锚点分割、旧缓存安全读取和跨论文隔离。
+
+验证结果：完整测试 `127 passed`、前端构建通过；真实 BERT 第 2、6 页目视核对，16 页本地扫描无误阻断；项目 `sample.pdf` 15 页未误判为双栏。合成错序页在服务端和 HTTP API 均被拒绝，模型调用 0 次。见 [M7.4c 验收](M7_4C_VALIDATION.md)。
