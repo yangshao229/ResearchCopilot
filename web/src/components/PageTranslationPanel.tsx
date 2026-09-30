@@ -11,7 +11,7 @@ import {
   type PageTranslation,
 } from "../api";
 import { useI18n } from "../i18n-context";
-import FormulaClip from "./FormulaClip";
+import OriginalPdfClip from "./OriginalPdfClip";
 
 type Props = {
   paperId: string;
@@ -174,18 +174,26 @@ export default function PageTranslationPanel({
           {translation.formula_regions?.length > 0 && (
             <p className="translation-math-notice">{t("translation.mathNotice")}</p>
           )}
+          {translation.table_regions?.length > 0 && (
+            <p className="translation-math-notice">{t("translation.tableNotice")}</p>
+          )}
           <div className="page-translation-text">
             {translation.translated_text
-              .split(/(\[\[RC_FORMULA_\d{2}\]\])/g)
+              .split(/(\[\[RC_(?:FORMULA|TABLE)_\d{2}\]\])/g)
               .map((part, index) => {
-                const region = translation.formula_regions?.find(
+                const formula = translation.formula_regions?.find(
                   (candidate) => candidate.marker === part,
                 );
-                return region ? (
-                  <FormulaClip key={`${part}-${index}`} paperId={paperId} region={region} />
-                ) : (
-                  <span key={`${part}-${index}`}>{part}</span>
+                if (formula) return (
+                  <OriginalPdfClip key={`${part}-${index}`} paperId={paperId} region={formula} kind="formula" />
                 );
+                const table = translation.table_regions?.find(
+                  (candidate) => candidate.marker === part,
+                );
+                if (table) return (
+                  <OriginalPdfClip key={`${part}-${index}`} paperId={paperId} region={table} kind="table" />
+                );
+                return <span key={`${part}-${index}`}>{part}</span>;
               })}
           </div>
           <p className="translation-source-count">

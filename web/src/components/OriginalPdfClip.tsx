@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 import { pdfjs } from "react-pdf";
 
-import { paperFileUrl, type PageTranslation } from "../api";
+import { paperFileUrl, type PdfClipRegion } from "../api";
 import { useI18n } from "../i18n-context";
 
-type FormulaRegion = PageTranslation["formula_regions"][number];
-
-export default function FormulaClip({
+export default function OriginalPdfClip({
   paperId,
   region,
+  kind,
 }: {
   paperId: string;
-  region: FormulaRegion;
+  region: PdfClipRegion;
+  kind: "formula" | "table";
 }) {
   const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -19,6 +19,7 @@ export default function FormulaClip({
 
   useEffect(() => {
     let active = true;
+    setFailed(false);
     const task = pdfjs.getDocument({ url: paperFileUrl(paperId) });
     let renderTask: { cancel: () => void; promise: Promise<void> } | null = null;
 
@@ -54,13 +55,16 @@ export default function FormulaClip({
     };
   }, [paperId, region.height, region.left, region.source_page, region.top, region.width]);
 
+  const caption = kind === "formula" ? "translation.originalFormula" : "translation.originalTable";
+  const aria = kind === "formula" ? "translation.originalFormulaAria" : "translation.originalTableAria";
   return (
-    <figure className="formula-clip">
-      <figcaption>{t("translation.originalFormula", { page: region.source_page })}</figcaption>
+    <figure className={`original-pdf-clip original-pdf-clip-${kind}`}>
+      <figcaption>{t(caption, { page: region.source_page })}</figcaption>
+      {kind === "table" && <small>{t("translation.tableScrollHint")}</small>}
       {failed ? (
-        <p role="alert">{t("translation.formulaPreviewFailed")}</p>
+        <p role="alert">{t("translation.originalPreviewFailed")}</p>
       ) : (
-        <canvas ref={canvasRef} role="img" aria-label={t("translation.originalFormulaAria")} />
+        <canvas ref={canvasRef} role="img" aria-label={t(aria)} />
       )}
     </figure>
   );

@@ -530,3 +530,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：PDF 视觉行与文本层换行为何不一致、访客回调中的文字坐标、保守几何匹配、原图保护与模型翻译的边界、失败时不生成假公式、译文缓存版本和真实 API 端到端验证。
 
 验证结果：完整测试 `117 passed`、前端构建通过；真实第 7 页重新翻译后没有学习率公式的尾部文字碎片，仍显示本地原图。M7.4 整体未完成，恢复工作见 [M7.4a 暂停点与验收](M7_4A_VALIDATION.md)。
+
+## M7.4b：有横线表格的原图保护
+
+设计依据：[表格页安全翻译开源产品拆解](research/2026-09-30-ruled-table-translation.md)。
+
+新增文件：`docs/research/2026-09-30-ruled-table-translation.md`、`docs/M7_4B_VALIDATION.md`、`src/research_copilot/table_protection.py`、`web/src/components/OriginalPdfClip.tsx`。
+
+重要修改：`src/research_copilot/page_translation.py`、`tests/test_page_translation.py`、`web/src/api.ts`、`web/src/components/PageTranslationPanel.tsx`、两份界面语言消息表、`web/src/styles.css`、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。原 `web/src/components/FormulaClip.tsx` 改由通用原图组件替代。
+
+以后学习：PDF 视觉表格与线性文字层的差别、保守几何检测、表题与单元格边界、拒绝不唯一匹配、占位符失败关闭、复用同一 PDF 裁图组件、窄栏横向查看、为何没有行列评测时不应伪造表格译文。
+
+验证结果：完整测试 `121 passed`、前端构建通过；真实 `sample.pdf` 第 6 页只把表格单元文字替换为本地原图，表题及后续正文译为中文，刷新后读取缓存。实测调用 DeepSeek 一次；表内单元格仍未翻译。见 [M7.4b 验收](M7_4B_VALIDATION.md)。

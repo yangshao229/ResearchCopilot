@@ -21,6 +21,11 @@ from research_copilot.page_translation import (
 from research_copilot.paper_answer_service import AnswerGenerationError
 from research_copilot.paper_glossary import PaperGlossaryStore
 from research_copilot.reading_history import ReadingHistoryStore
+from research_copilot.table_protection import (
+    TableRegion,
+    protect_ruled_tables,
+    validate_table_markers,
+)
 from research_copilot.web_app import create_app
 
 
@@ -325,3 +330,110 @@ def test_ambiguous_formula_position_is_left_unmodified(tmp_path: Path) -> None:
     protected, regions = protect_display_formulas(pdf_path, 1, source)
     assert protected == source
     assert regions == []
+
+
+def _ruled_table_pdf(tmp_path: Path) -> Path:
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})}
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(
+        b"BT /F1 11 Tf 108 710 Td (Table 1 describes the results.) Tj ET "
+        b"118 680 m 493 680 l S 118 650 m 493 650 l S 118 600 m 493 600 l S "
+        b"BT /F1 11 Tf 124 668 Td (Layer Type and Complexity per Layer) Tj ET "
+        b"BT /F1 11 Tf 400 668 Td (Path Length) Tj ET "
+        b"BT /F1 11 Tf 124 640 Td (Self-Attention) Tj ET "
+        b"BT /F1 11 Tf 400 640 Td (O(1)) Tj ET "
+        b"BT /F1 11 Tf 124 625 Td (Recurrent Layer) Tj ET "
+        b"BT /F1 11 Tf 400 625 Td (O(n)) Tj ET "
+        b"BT /F1 11 Tf 124 610 Td (Convolutional Layer) Tj ET "
+        b"BT /F1 11 Tf 400 610 Td (O(log n)) Tj ET "
+        b"BT /F1 11 Tf 108 570 Td (The next paragraph explains these results.) Tj ET"
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    pdf_path = tmp_path / "ruled-table.pdf"
+    with pdf_path.open("wb") as output:
+        writer.write(output)
+    return pdf_path
+
+
+def test_ruled_table_is_protected_but_caption_and_prose_remain(tmp_path: Path) -> None:
+    pdf_path = _ruled_table_pdf(tmp_path)
+    source_text = PdfReader(pdf_path).pages[0].extract_text()
+    protected, regions = protect_ruled_tables(pdf_path, 1, source_text)
+
+    assert len(regions) == 1
+    assert "Table 1 describes the results." in protected
+    assert "The next paragraph explains these results." in protected
+    assert "Self-Attention" not in protected
+    assert "Convolutional Layer" not in protected
+    assert protected.count("[[RC_TABLE_01]]") == 1
+    assert regions[0].source_page == 1
+    assert regions[0].width > 350
+
+    source = FakePageSource()
+    source.pages[1] = source_text
+    model = FakeTranslationModel()
+    service = PageTranslationService(
+        source, PaperGlossaryStore(tmp_path / "glossary"), tmp_path / "translations", model
+    )
+    result = service.translate(pdf_path, "paper-one", 1, LanguagePolicy())
+    assert "Self-Attention" not in model.calls[0][0]
+    assert "The next paragraph explains these results." in model.calls[0][0]
+    assert result.table_regions == regions
+
+
+def test_ruled_table_uncertain_text_match_is_not_removed(tmp_path: Path) -> None:
+    pdf_path = _ruled_table_pdf(tmp_path)
+    source_text = PdfReader(pdf_path).pages[0].extract_text()
+    ambiguous = source_text + "\nLayer Type and Complexity per Layer\n"
+    protected, regions = protect_ruled_tables(pdf_path, 1, ambiguous)
+    assert protected == ambiguous
+    assert regions == []
+
+
+def test_page_without_rules_is_not_marked_as_a_table(tmp_path: Path) -> None:
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    pdf_path = tmp_path / "plain.pdf"
+    with pdf_path.open("wb") as output:
+        writer.write(output)
+
+    source_text = "A heading\nA paragraph with ordinary prose.\n"
+    protected, regions = protect_ruled_tables(pdf_path, 1, source_text)
+    assert protected == source_text
+    assert regions == []
+
+
+def test_table_marker_must_appear_exactly_once(tmp_path: Path) -> None:
+    region = TableRegion(
+        marker="[[RC_TABLE_01]]", source_page=1, left=100, top=100,
+        width=300, height=90,
+    )
+    assert validate_table_markers("正文\n[[RC_TABLE_01]]", [region])
+    assert not validate_table_markers("正文", [region])
+    assert not validate_table_markers("[[RC_TABLE_01]] [[RC_TABLE_01]]", [region])
+
+    pdf_path = _ruled_table_pdf(tmp_path)
+    source = FakePageSource()
+    source.pages[1] = PdfReader(pdf_path).pages[0].extract_text()
+
+    class DropsTable(FakeTranslationModel):
+        def translate(self, source_text: str, policy: LanguagePolicy, terms: list) -> str:
+            return "只输出正文，遗漏原文表格"
+
+    service = PageTranslationService(
+        source, PaperGlossaryStore(tmp_path / "glossary"), tmp_path / "translations", DropsTable()
+    )
+    with pytest.raises(AnswerGenerationError, match="表格占位符"):
+        service.translate(pdf_path, "paper-one", 1, LanguagePolicy())
+    assert service.cached(pdf_path, "paper-one", 1, LanguagePolicy()) is None

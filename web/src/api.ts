@@ -143,19 +143,22 @@ export type PaperAnswer = {
   cache_hit: boolean;
 };
 
+export type PdfClipRegion = {
+  marker: string;
+  source_page: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+};
+
 export type PageTranslation = {
   source_page: number;
   source_chars: number;
   target_language: "zh-CN" | "en";
   translated_text: string;
-  formula_regions: {
-    marker: string;
-    source_page: number;
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-  }[];
+  formula_regions: PdfClipRegion[];
+  table_regions: PdfClipRegion[];
   model: string;
   cache_hit: boolean;
 };

@@ -631,7 +631,7 @@ button:disabled {
   line-height: 1.6;
 }
 
-.formula-clip {
+.original-pdf-clip {
   margin: 12px 0;
   padding: 9px;
   border: 1px solid #cbd5cc;
@@ -640,16 +640,26 @@ button:disabled {
   overflow-x: auto;
 }
 
-.formula-clip figcaption {
+.original-pdf-clip figcaption {
   margin-bottom: 5px;
   color: #58685e;
   font-size: 12px;
 }
 
-.formula-clip canvas {
+.original-pdf-clip canvas {
   display: block;
   max-width: 100%;
   height: auto;
+}
+
+.original-pdf-clip-table canvas {
+  max-width: none;
+}
+
+.original-pdf-clip-table small {
+  display: block;
+  margin-bottom: 5px;
+  color: #58685e;
 }
 
 .assistant-intro {
