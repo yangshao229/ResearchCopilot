@@ -32,7 +32,7 @@ from research_copilot.paper_glossary import (
 from research_copilot.page_quality import PageQuality, inspect_page_text
 from research_copilot.storage import atomic_write_json, read_json, validated_json_path
 
-PAGE_TRANSLATION_PROMPT_VERSION = "page-translation-v3-formula-and-symbol-protection"
+PAGE_TRANSLATION_PROMPT_VERSION = "page-translation-v4-visual-formula-continuations"
 MAX_PAGE_TEXT_CHARS = 10000
 
 

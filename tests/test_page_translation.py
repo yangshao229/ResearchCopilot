@@ -7,6 +7,7 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 from research_copilot.domain import LanguagePolicy
 from research_copilot.formula_protection import (
+    protect_display_formulas,
     protect_math_symbols,
     restore_math_symbols,
     validate_formula_markers,
@@ -258,3 +259,69 @@ def test_display_formula_is_not_sent_to_model_and_remains_page_anchored(tmp_path
     with pytest.raises(AnswerGenerationError, match="公式占位符"):
         unsafe_service.translate(pdf_path, "paper-one", 1, LanguagePolicy())
     assert unsafe_service.cached(pdf_path, "paper-one", 1, LanguagePolicy()) is None
+
+
+def test_visual_formula_continuation_does_not_leave_math_fragment_in_prose(
+    tmp_path: Path,
+) -> None:
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})}
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(
+        b"BT /F1 10 Tf 160 600 Td (lrate = d-0.5) Tj ET "
+        b"BT /F1 7 Tf 200 597 Td (model * min(step_num, warmup_steps) (3)) Tj ET "
+        b"BT /F1 10 Tf 100 575 Td (This paragraph explains the formula.) Tj ET"
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    pdf_path = tmp_path / "paper.pdf"
+    with pdf_path.open("wb") as output:
+        writer.write(output)
+
+    source = (
+        "lrate = d-0.5\n"
+        "model * min(step_num, warmup_steps) (3)\n"
+        "This paragraph explains the formula.\n"
+    )
+    protected, regions = protect_display_formulas(pdf_path, 1, source)
+    assert protected == "[[RC_FORMULA_01]]\nThis paragraph explains the formula.\n"
+    assert len(regions) == 1
+    assert validate_formula_markers(protected, regions)
+
+
+def test_ambiguous_formula_position_is_left_unmodified(tmp_path: Path) -> None:
+    writer = PdfWriter()
+    page = writer.add_blank_page(width=612, height=792)
+    font = DictionaryObject(
+        {
+            NameObject("/Type"): NameObject("/Font"),
+            NameObject("/Subtype"): NameObject("/Type1"),
+            NameObject("/BaseFont"): NameObject("/Helvetica"),
+        }
+    )
+    page[NameObject("/Resources")] = DictionaryObject(
+        {NameObject("/Font"): DictionaryObject({NameObject("/F1"): writer._add_object(font)})}
+    )
+    stream = DecodedStreamObject()
+    stream.set_data(
+        b"BT /F1 10 Tf 160 600 Td (lrate = d-0.5) Tj ET "
+        b"BT /F1 10 Tf 160 500 Td (lrate = d-0.5) Tj ET"
+    )
+    page[NameObject("/Contents")] = writer._add_object(stream)
+    pdf_path = tmp_path / "paper.pdf"
+    with pdf_path.open("wb") as output:
+        writer.write(output)
+
+    source = "lrate = d-0.5\n"
+    protected, regions = protect_display_formulas(pdf_path, 1, source)
+    assert protected == source
+    assert regions == []

@@ -518,3 +518,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：HTTP 成功与模型生成成功为何不同、推理 token 与可见输出共享预算、接口状态和 JSON Schema 双层校验、用真实 API 诊断但不输出密钥或正文、为什么单元测试通过还需端到端验证。
 
 验证结果：完整测试 `115 passed`、前端构建通过；真实 `sample.pdf` 第 7 页修复前 `incomplete`、可见输出 0 字；修复后 `completed`、推理 token 0、返回约 1,300 字译文。阅读器中实际显示中文译文和两个独立公式原图，刷新后直接从本地缓存读取。行内公式与表格仍未可靠还原。
+
+## M7.4a：跨 PDF 抽取行的展示公式保护
+
+设计依据：[跨文本行公式保护开源产品拆解](research/2026-09-30-display-math-continuation.md)。
+
+新增文件：`docs/research/2026-09-30-display-math-continuation.md`、`docs/M7_4A_VALIDATION.md`。
+
+重要修改：`src/research_copilot/formula_protection.py`、`src/research_copilot/page_translation.py`、`tests/test_page_translation.py`、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：PDF 视觉行与文本层换行为何不一致、访客回调中的文字坐标、保守几何匹配、原图保护与模型翻译的边界、失败时不生成假公式、译文缓存版本和真实 API 端到端验证。
+
+验证结果：完整测试 `117 passed`、前端构建通过；真实第 7 页重新翻译后没有学习率公式的尾部文字碎片，仍显示本地原图。M7.4 整体未完成，恢复工作见 [M7.4a 暂停点与验收](M7_4A_VALIDATION.md)。

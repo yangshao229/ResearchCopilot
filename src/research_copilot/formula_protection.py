@@ -55,16 +55,23 @@ def protect_display_formulas(
             positions.append((text.strip(), float(tm[4]), float(tm[5]), float(size)))
 
     page.extract_text(visitor_text=visit_text)
-    protected_text = source_text
+    source_lines = source_text.splitlines(keepends=True)
+    protected_parts: list[str] = []
     regions: list[FormulaRegion] = []
     used_positions: set[int] = set()
 
-    for line in source_text.splitlines():
+    line_index = 0
+    while line_index < len(source_lines):
+        line = source_lines[line_index]
         expression = line.strip()
         if len(regions) >= 12 or not _is_display_equation(expression):
+            protected_parts.append(line)
+            line_index += 1
             continue
         match = _EQUATION_START.match(expression)
         if match is None:
+            protected_parts.append(line)
+            line_index += 1
             continue
         anchor = match.group(1)
         candidates = [
@@ -73,19 +80,29 @@ def protect_display_formulas(
             if index not in used_positions and text.startswith(anchor)
         ]
         if len(candidates) != 1:
+            protected_parts.append(line)
+            line_index += 1
             continue
         index, x, y, size = candidates[0]
         if not (0 <= x < page_width and 0 <= y < page_height):
+            protected_parts.append(line)
+            line_index += 1
             continue
         used_positions.add(index)
+        end_index = line_index + 1
+        while end_index < len(source_lines) and _is_visual_formula_continuation(
+            source_lines[end_index].strip(), x, y, size, positions
+        ):
+            end_index += 1
         left = max(0.0, x - 12)
         right = min(page_width, max(x + 80, page_width - 65))
         top = max(0.0, page_height - y - max(17, size * 1.7))
         bottom = min(page_height, page_height - y + max(14, size * 1.4))
         marker = f"[[RC_FORMULA_{len(regions) + 1:02d}]]"
-        if line not in protected_text:
-            continue
-        protected_text = protected_text.replace(line, marker, 1)
+        last_line = source_lines[end_index - 1]
+        line_ending = last_line[len(last_line.rstrip("\r\n")):]
+        protected_parts.append(marker + line_ending)
+        line_index = end_index
         regions.append(
             FormulaRegion(
                 marker=marker,
@@ -96,7 +113,7 @@ def protect_display_formulas(
                 height=round(bottom - top, 2),
             )
         )
-    return protected_text, regions
+    return "".join(protected_parts), regions
 
 
 def _is_display_equation(line: str) -> bool:
@@ -110,6 +127,29 @@ def _is_display_equation(line: str) -> bool:
     if len(line.split()) > 16 or line.startswith(("The ", "This ", "While ", "In ")):
         return False
     return True
+
+
+def _is_visual_formula_continuation(
+    line: str,
+    anchor_x: float,
+    anchor_y: float,
+    anchor_size: float,
+    positions: list[tuple[str, float, float, float]],
+) -> bool:
+    """Join a math-heavy PDF text line only when it shares the equation's visual row."""
+    if not line or len(line) > 150 or not re.search(r"[=+*/·×÷±−^_]", line):
+        return False
+    match = _EQUATION_START.match(line)
+    if match is None:
+        return False
+    word = match.group(1)
+    nearby = [
+        text for text, x, y, _size in positions
+        if text.startswith(word)
+        and x >= anchor_x
+        and abs(y - anchor_y) <= max(6, anchor_size * 0.8)
+    ]
+    return len(nearby) == 1
 
 
 def validate_formula_markers(translation: str, regions: list[FormulaRegion]) -> bool:
