@@ -662,6 +662,20 @@ button:disabled {
   color: #58685e;
 }
 
+.original-pdf-clip-inline {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  max-width: 100%;
+  margin: 0 2px;
+  background: #fff;
+}
+
+.original-pdf-clip-inline canvas {
+  display: block;
+  max-width: 100%;
+}
+
 .assistant-intro {
   color: #667169;
   font-size: 13px;

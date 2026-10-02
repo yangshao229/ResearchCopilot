@@ -564,3 +564,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 保留的边界：后端路由长，但拆为更多文件不能自动减少逻辑；公式与表格保护分别处理不同几何对象，不因名字相似而强行合并；旧命令行论文卡片和新网页卡片仍服务不同入口。PDF 多次解析和大前端组件是后续**有性能数据或交互测试时**再拆的候选，不在这次无基线的整理中冒险重写。
 
 以后学习：前端请求封装、HTTP 错误与 JSON 数据的区别、保持外部契约不变的重构、为什么“文件少”不等于“架构简单”、如何用构建与端到端检查保护重构。
+
+## M7.4d：唯一可定位的行内数学参数原图保护
+
+设计依据：[行内数学参数开源产品拆解](research/2026-10-02-inline-math-preservation.md)。
+
+新增文件：`docs/research/2026-10-02-inline-math-preservation.md`、`docs/M7_4D_VALIDATION.md`、`tests/test_inline_formula.py`。
+
+重要修改：`src/research_copilot/formula_protection.py`、`src/research_copilot/page_quality.py`、`src/research_copilot/page_translation.py`、`web/src/api.ts`、`web/src/components/OriginalPdfClip.tsx`、`web/src/components/PageTranslationPanel.tsx`、`web/src/styles.css`、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：PDF 文字层为何丢失上/下标、正则只用于候选而非数学重建、`pdfplumber` 字符坐标、视觉行与唯一匹配、原文小裁片、模型占位符校验、Pydantic 可选字段兼容性、前端行内画布与块级原图、缓存版本失效、真实模型与假模型验收的差别。
+
+验证结果：完整测试 `131 passed`、前端构建通过；真实 `sample.pdf` 第 7 页找到三处唯一行内参数，假模型服务流程收到五个公式占位符；未调用 DeepSeek。网页工作台可打开，但新译文尚未做真实模型视觉验收。见 [M7.4d 验收](M7_4D_VALIDATION.md)。

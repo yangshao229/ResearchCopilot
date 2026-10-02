@@ -185,7 +185,7 @@ export default function PageTranslationPanel({
                   (candidate) => candidate.marker === part,
                 );
                 if (formula) return (
-                  <OriginalPdfClip key={`${part}-${index}`} paperId={paperId} region={formula} kind="formula" />
+                  <OriginalPdfClip key={`${part}-${index}`} paperId={paperId} region={formula} kind="formula" inline={formula.inline} />
                 );
                 const table = translation.table_regions?.find(
                   (candidate) => candidate.marker === part,

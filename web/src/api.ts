@@ -150,6 +150,7 @@ export type PdfClipRegion = {
   top: number;
   width: number;
   height: number;
+  inline?: boolean;
 };
 
 export type PageTranslation = {

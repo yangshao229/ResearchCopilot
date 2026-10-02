@@ -8,10 +8,12 @@ export default function OriginalPdfClip({
   paperId,
   region,
   kind,
+  inline = false,
 }: {
   paperId: string;
   region: PdfClipRegion;
   kind: "formula" | "table";
+  inline?: boolean;
 }) {
   const { t } = useI18n();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -57,6 +59,22 @@ export default function OriginalPdfClip({
 
   const caption = kind === "formula" ? "translation.originalFormula" : "translation.originalTable";
   const aria = kind === "formula" ? "translation.originalFormulaAria" : "translation.originalTableAria";
+  if (inline) {
+    return (
+      <span className="original-pdf-clip-inline" title={t(caption, { page: region.source_page })}>
+        {failed ? (
+          <span role="alert">{t("translation.originalPreviewFailed")}</span>
+        ) : (
+          <canvas
+            ref={canvasRef}
+            role="img"
+            aria-label={t(aria)}
+            style={{ width: region.width * 1.35, height: region.height * 1.35 }}
+          />
+        )}
+      </span>
+    );
+  }
   return (
     <figure className={`original-pdf-clip original-pdf-clip-${kind}`}>
       <figcaption>{t(caption, { page: region.source_page })}</figcaption>

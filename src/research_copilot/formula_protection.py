@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pdfplumber
 from pydantic import BaseModel, ConfigDict, Field
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
@@ -18,6 +19,9 @@ FORMULA_MARKER_PATTERN = re.compile(r"\[\[RC_FORMULA_\d{2}\]\]")
 SYMBOL_MARKER_PATTERN = re.compile(r"\[\[RC_SYMBOL_\d{2}\]\]")
 _MATH_SYMBOLS = re.compile(r"[α-ωΑ-Ω∑∏∫∞√≤≥≠≈∈∉⊂⊆⊕⊗→←↔±×÷∂∇−]+")
 _EQUATION_START = re.compile(r"^([A-Za-z][A-Za-z0-9]{2,})\b")
+_INLINE_ASSIGNMENT = re.compile(
+    r"[α-ωΑ-Ωϵε]\d{0,2}\s*=\s*\d+(?:\.\d+)?(?:[−-]\d+)?"
+)
 
 
 class FormulaRegion(BaseModel):
@@ -29,6 +33,99 @@ class FormulaRegion(BaseModel):
     top: float = Field(ge=0)
     width: float = Field(gt=0)
     height: float = Field(gt=0)
+    inline: bool = False
+
+
+def _char_center(char: dict[str, object]) -> float:
+    return (float(char["top"]) + float(char["bottom"])) / 2
+
+
+def _unique_inline_box(
+    chars: list[dict[str, object]], expression: str
+) -> tuple[float, float, float, float] | None:
+    """Match the exact visible glyphs, including raised/lowered digits, once."""
+    target = "".join(expression.split())
+    matches: list[tuple[float, float, float, float]] = []
+    for anchor in chars:
+        if anchor["text"] != target[0]:
+            continue
+        anchor_x = float(anchor["x0"])
+        center_y = _char_center(anchor)
+        row = sorted(
+            (
+                char for char in chars
+                if anchor_x - 0.1 <= float(char["x0"]) <= anchor_x + 110
+                and abs(_char_center(char) - center_y) <= 6
+                and not str(char["text"]).isspace()
+            ),
+            key=lambda char: (float(char["x0"]), float(char["top"])),
+        )
+        run = row[:len(target)]
+        if (
+            len(run) != len(target)
+            or "".join(str(char["text"]) for char in run) != target
+            or any(
+                float(current["x0"]) - float(previous["x1"]) > 12
+                for previous, current in zip(run, run[1:])
+            )
+        ):
+            continue
+        matches.append((
+            min(float(char["x0"]) for char in run),
+            min(float(char["top"]) for char in run),
+            max(float(char["x1"]) for char in run),
+            max(float(char["bottom"]) for char in run),
+        ))
+    return matches[0] if len(matches) == 1 else None
+
+
+def protect_inline_assignments(
+    pdf_path: Path,
+    source_page: int,
+    source_text: str,
+    *,
+    marker_start: int = 1,
+) -> tuple[str, list[FormulaRegion]]:
+    """Keep uniquely located Greek parameter assignments as original PDF clips.
+
+    This deliberately does not infer arbitrary inline mathematical structure.
+    """
+    if not pdf_path.is_file() or source_page < 1:
+        return source_text, []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            page = pdf.pages[source_page - 1]
+            if page.rotation % 360:
+                return source_text, []
+            width, height = float(page.width), float(page.height)
+            chars = page.chars
+    except (OSError, IndexError, ValueError):
+        return source_text, []
+
+    protected = source_text
+    regions: list[FormulaRegion] = []
+    for match in _INLINE_ASSIGNMENT.finditer(source_text):
+        expression = match.group()
+        if source_text.count(expression) != 1 or marker_start + len(regions) > 12:
+            continue
+        box = _unique_inline_box(chars, expression)
+        if box is None:
+            continue
+        left, top, right, bottom = box
+        if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+            continue
+        marker = f"[[RC_FORMULA_{marker_start + len(regions):02d}]]"
+        protected = protected.replace(expression, marker, 1)
+        regions.append(FormulaRegion(
+            marker=marker,
+            source_page=source_page,
+            left=round(left, 2),
+            top=round(max(0.0, top - 1), 2),
+            width=round(right - left, 2),
+            height=round(min(height, bottom + 1) - max(0.0, top - 1), 2),
+            inline=True,
+        ))
+    return protected, regions
 
 
 def protect_display_formulas(

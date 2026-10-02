@@ -14,6 +14,7 @@ PageQualityIssue = Literal[
 ]
 
 _MATH_GLYPHS = re.compile(r"[∑∏∫√≤≥≠≈∈∉⊂⊆⊕⊗∂∇∞]")
+_GREEK_ASSIGNMENT = re.compile(r"[α-ωΑ-Ωϵε]\d{0,2}\s*=")
 
 
 class PageQuality(BaseModel):
@@ -40,7 +41,7 @@ def inspect_page_text(source_page: int, text: str, max_chars: int) -> PageQualit
             issues.append("long_text")
         if size < 80:
             issues.append("short_text")
-        if _MATH_GLYPHS.search(stripped):
+        if _MATH_GLYPHS.search(stripped) or _GREEK_ASSIGNMENT.search(stripped):
             issues.append("math_review")
     status: PageQualityStatus = (
         "blocked" if any(issue in issues for issue in ("no_text", "damaged_text", "long_text"))

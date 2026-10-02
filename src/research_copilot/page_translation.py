@@ -15,6 +15,7 @@ from research_copilot.domain import GlossaryEntry, LanguagePolicy
 from research_copilot.formula_protection import (
     FormulaRegion,
     protect_display_formulas,
+    protect_inline_assignments,
     protect_math_symbols,
     restore_math_symbols,
     validate_formula_markers,
@@ -38,7 +39,7 @@ from research_copilot.table_protection import (
     validate_table_markers,
 )
 
-PAGE_TRANSLATION_PROMPT_VERSION = "page-translation-v5-ruled-table-clips"
+PAGE_TRANSLATION_PROMPT_VERSION = "page-translation-v6-inline-math-clips"
 MAX_PAGE_TEXT_CHARS = 10000
 
 
@@ -254,6 +255,10 @@ class PageTranslationService:
                 return cached
         model_source, table_regions = protect_ruled_tables(pdf_path, source_page, source_text)
         model_source, formula_regions = protect_display_formulas(pdf_path, source_page, model_source)
+        model_source, inline_regions = protect_inline_assignments(
+            pdf_path, source_page, model_source, marker_start=len(formula_regions) + 1
+        )
+        formula_regions.extend(inline_regions)
         model_source, symbol_replacements = protect_math_symbols(model_source)
         translated_text = self.model.translate(model_source, policy, terms).strip()
         if not translated_text:
