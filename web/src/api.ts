@@ -4,6 +4,48 @@ export type Paper = {
   relative_path: string;
   page_count: number | null;
   detected_source_language: "en" | "zh-CN" | "mixed" | "unknown";
+  collection_ids: string[];
+  tags: string[];
+};
+
+export type LibraryCollection = {
+  id: string;
+  name: string;
+  created_at: string;
+};
+
+export type PaperOrganization = {
+  collection_ids: string[];
+  tags: string[];
+};
+
+export type LibrarySearchHit = {
+  paper_id: string;
+  paper_name: string;
+  source_page: number;
+  text: string;
+  score: number;
+};
+
+export type LibrarySearchResponse = {
+  results: LibrarySearchHit[];
+  requested_paper_count: number;
+  searched_paper_count: number;
+  skipped_paper_count: number;
+};
+
+export type ResearchEvidenceStatus = "matched" | "no_match" | "unsearchable";
+
+export type ResearchPaperEvidence = {
+  paper_id: string;
+  paper_name: string;
+  status: ResearchEvidenceStatus;
+  hits: LibrarySearchHit[];
+};
+
+export type ResearchEvidenceResponse = {
+  query: string;
+  papers: ResearchPaperEvidence[];
 };
 
 export type PaperImportResult = {
@@ -290,6 +332,72 @@ function jsonOptions(method: string, body: unknown): RequestInit {
 
 export async function listPapers(): Promise<Paper[]> {
   return requestJson<Paper[]>("/api/papers", "论文列表加载失败");
+}
+
+export async function listLibraryCollections(): Promise<LibraryCollection[]> {
+  return requestJson<LibraryCollection[]>(
+    "/api/library/collections",
+    "论文集合加载失败",
+  );
+}
+
+export async function createLibraryCollection(
+  name: string,
+): Promise<LibraryCollection> {
+  return requestJson<LibraryCollection>(
+    "/api/library/collections",
+    "论文集合创建失败",
+    jsonOptions("POST", { name }),
+  );
+}
+
+export async function deleteLibraryCollection(
+  collectionId: string,
+): Promise<void> {
+  await requestResponse(
+    `/api/library/collections/${encodeURIComponent(collectionId)}`,
+    "论文集合删除失败",
+    { method: "DELETE" },
+  );
+}
+
+export async function savePaperOrganization(
+  paperId: string,
+  organization: PaperOrganization,
+): Promise<PaperOrganization> {
+  return requestJson<PaperOrganization>(
+    `/api/papers/${encodeURIComponent(paperId)}/organization`,
+    "论文组织信息保存失败",
+    jsonOptions("PUT", organization),
+  );
+}
+
+export async function searchLibrary(
+  query: string,
+  paperIds: string[],
+  limit = 20,
+): Promise<LibrarySearchResponse> {
+  return requestJson<LibrarySearchResponse>(
+    "/api/library/search",
+    "资料库全文搜索失败",
+    jsonOptions("POST", { query, paper_ids: paperIds, limit }),
+  );
+}
+
+export async function collectResearchEvidence(
+  query: string,
+  paperIds: string[],
+  perPaperLimit = 3,
+): Promise<ResearchEvidenceResponse> {
+  return requestJson<ResearchEvidenceResponse>(
+    "/api/research/evidence",
+    "多论文证据整理失败",
+    jsonOptions("POST", {
+      query,
+      paper_ids: paperIds,
+      per_paper_limit: perPaperLimit,
+    }),
+  );
 }
 
 export async function getPageTranslation(

@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 SearchMode = Literal["keyword", "semantic", "hybrid"]
+ResearchEvidenceStatus = Literal["matched", "no_match", "unsearchable"]
 ReadingCategory = Literal[
     "unclassified",
     "summary",
@@ -104,6 +105,41 @@ class SearchHit(BaseModel):
     fusion_score: float = 0.0
     reference_penalty: float = 0.0
     rerank_score: float = 0.0
+
+
+class LibrarySearchHit(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paper_id: str
+    paper_name: str
+    source_page: int = Field(ge=1)
+    text: str
+    score: float = Field(gt=0)
+
+
+class LibrarySearchResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    results: list[LibrarySearchHit]
+    requested_paper_count: int = Field(ge=0)
+    searched_paper_count: int = Field(ge=0)
+    skipped_paper_count: int = Field(ge=0)
+
+
+class ResearchPaperEvidence(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    paper_id: str
+    paper_name: str
+    status: ResearchEvidenceStatus
+    hits: list[LibrarySearchHit]
+
+
+class ResearchEvidenceResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    query: str
+    papers: list[ResearchPaperEvidence]
 
 
 class Evidence(SearchHit):

@@ -588,3 +588,39 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：如何把受支持召回、普通文本误报和歧义数学安全回退分开计分，人工真值与合成排版轮廓的边界，为什么坐标唯一只证明原页位置、不证明数学语义，以及规则没有足够真实样本时为何“不扩大”也是可验证的工程结果。
 
 验证结果：14 个账本案例中受支持召回率 `1.00`（4/4）、明确负样本误报率 `0.00`（0/2）、安全回退率 `1.00`（8/8）；本机真实 `sample.pdf` 第 7 页三处行内区域稳定且 PDF SHA-256 未变化。该原始 PDF 不随 Git 同步，其他设备缺失时只跳过真实样本核对。完整测试与前端构建通过；本阶段没有调用 DeepSeek，也没有把合成结果表述为跨论文真实准确率。见 [M7.4e 验收](M7_4E_VALIDATION.md)。
+
+## M8.1：本地论文集合与标签
+
+设计依据：[本地论文集合与标签开源产品拆解](research/2026-10-03-library-collections-tags.md)。
+
+新增文件：`docs/research/2026-10-03-library-collections-tags.md`、`docs/M8_1_VALIDATION.md`、`src/research_copilot/library_organization.py`、`tests/test_library_organization.py`。
+
+重要修改：`src/research_copilot/paper_library.py`、`src/research_copilot/web_app.py`、`web/src/api.ts`、`web/src/App.tsx`、两份界面语言消息表、`web/src/styles.css`、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：资源库组织元数据与文件路径的分离、多对多引用、稳定 ID、大小写不敏感规范化、原子 JSON 写入、依赖注入测试、集合删除的安全语义、前端派生筛选状态、为什么集合筛选不能静默扩大问答范围，以及何时应从 JSON 迁移到可查询存储。
+
+验证结果：完整测试 `137 passed`、前端 TypeScript 与生产构建通过；使用两篇临时 PDF 验证集合、标签、筛选所需 API 和删除语义，没有修改真实论文、阅读记录或翻译缓存，也没有调用 DeepSeek。受限环境不允许监听空闲临时端口，因此本轮以生产构建和 FastAPI 端到端测试完成自动验收。见 [M8.1 验收](M8_1_VALIDATION.md)。
+
+## M8.2：本地资料库全文搜索
+
+设计依据：[本地资料库全文搜索开源产品拆解](research/2026-10-03-library-full-text-search.md)。
+
+新增文件：`docs/research/2026-10-03-library-full-text-search.md`、`docs/M8_2_VALIDATION.md`、`tests/test_library_search.py`。
+
+重要修改：`src/research_copilot/domain.py`、`src/research_copilot/paper_search_service.py`、`src/research_copilot/web_app.py`、`web/src/api.ts`、`web/src/App.tsx`、两份界面语言消息表、`web/src/styles.css`、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：资料库查找与跨论文生成的边界、显式范围 ID、分页抽取缓存复用、多词同现语义、纯文本片段与 HTML 高亮的安全差别、稳定排序、单文档失败隔离、扫描件与零命中的区别、为何点击定位不能自动扩大当前问答上下文，以及何时需要真正的全文索引。
+
+验证结果：完整测试 `140 passed`、前端 TypeScript 与生产构建通过；临时三论文场景覆盖两篇可搜索和一篇损坏 PDF。真实 `sample.pdf` 在临时缓存目录搜索 `attention`，前五个位置为第 4、5、2、6、1 页，源文件哈希保持不变。没有读取密钥、加载 embedding、调用 DeepSeek 或修改阅读记录与翻译缓存。见 [M8.2 验收](M8_2_VALIDATION.md)。
+
+## M8.3：显式多论文研究集合与证据聚合评测
+
+设计依据：[显式多论文研究集合与证据聚合评测拆解](research/2026-10-03-explicit-multi-paper-evidence.md)。
+
+新增文件：`docs/research/2026-10-03-explicit-multi-paper-evidence.md`、`docs/evaluations/m8_3_multi_paper_evidence_truth.json`、`docs/M8_3_VALIDATION.md`、`tests/test_multi_paper_evidence_evaluation.py`。
+
+重要修改：`src/research_copilot/domain.py`、`src/research_copilot/web_app.py`、`web/src/api.ts`、`web/src/App.tsx`、两份界面语言消息表、`web/src/styles.css`、`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。
+
+以后学习：任务范围与长期集合的区别、请求携带完整论文 ID 范围、逐来源公平上限、分组证据与全局 Top-K 的差别、三态失败语义、浏览器 localStorage、范围变化使旧结果失效、来源覆盖/页码召回/范围泄漏指标，以及为什么合成聚合逻辑通过仍不能证明真实跨论文回答可靠。
+
+验证结果：固定合成账本的预期来源覆盖率 `1.00`（3/3）、页码召回率 `1.00`（3/3）、状态准确率 `1.00`（7/7）、范围泄漏率 `0.00`；完整测试 `143 passed`，前端生产构建通过。当前只有一篇真实本地论文，因此没有进行或声称真实跨论文准确率，也没有调用 DeepSeek、修改论文、阅读记录或翻译缓存。见 [M8.3 验收](M8_3_VALIDATION.md)。

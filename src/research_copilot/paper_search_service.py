@@ -106,6 +106,65 @@ class PaperSearchService:
                 return page["text"]
         return ""
 
+    def search_library_text(
+        self,
+        pdf_path: Path,
+        paper_id: str,
+        query: str,
+        limit: int = 3,
+    ) -> tuple[list[dict[str, int | float | str]], bool]:
+        if limit <= 0:
+            return [], False
+
+        terms = [term for term in query.casefold().split() if term]
+        if not terms:
+            return [], False
+
+        page_data = load_page_data(self._ensure_page_data(pdf_path, paper_id))
+        pages = page_data.get("pages", [])
+        if not isinstance(pages, list):
+            raise ValueError("Invalid page data: pages must be a list.")
+
+        searchable = False
+        results: list[dict[str, int | float | str]] = []
+        for page in pages:
+            if not isinstance(page, dict):
+                continue
+            page_text = page.get("text")
+            source_page = page.get("source_page")
+            if not isinstance(page_text, str) or not page_text.strip():
+                continue
+            if not isinstance(source_page, int) or source_page < 1:
+                continue
+
+            searchable = True
+            normalized_text = " ".join(page_text.split())
+            folded_text = normalized_text.casefold()
+            if not all(term in folded_text for term in terms):
+                continue
+
+            score = float(sum(folded_text.count(term) for term in terms))
+            first_match = min(folded_text.find(term) for term in terms)
+            snippet_start = max(0, first_match - 110)
+            snippet_end = min(len(normalized_text), snippet_start + 280)
+            snippet = normalized_text[snippet_start:snippet_end]
+            if snippet_start:
+                snippet = f"…{snippet}"
+            if snippet_end < len(normalized_text):
+                snippet = f"{snippet}…"
+            results.append(
+                {
+                    "source_page": source_page,
+                    "text": snippet,
+                    "score": score,
+                }
+            )
+
+        results.sort(
+            key=lambda item: (-float(item["score"]), int(item["source_page"]))
+        )
+        return results[:limit], searchable
+
     def _ensure_page_data(self, pdf_path: Path, paper_id: str) -> Path:
         page_data_path = self.page_data_path(paper_id)
         needs_import = (

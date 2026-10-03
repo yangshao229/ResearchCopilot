@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator, model_validator
+from pypdf.errors import PyPdfError
 
 from research_copilot.conversation_sessions import (
     ConversationSession,
@@ -18,12 +19,16 @@ from research_copilot.document_service import PaperDocumentService
 from research_copilot.domain import (
     GlossaryEntry,
     LanguagePolicy,
+    LibrarySearchHit,
+    LibrarySearchResponse,
     PaperAnswer,
     ReadingAnchor,
     ReadingCategory,
     ReadingContext,
     ReadingRecord,
     ReadingTask,
+    ResearchEvidenceResponse,
+    ResearchPaperEvidence,
     SearchHit,
     SearchMode,
     ScopePreference,
@@ -53,6 +58,11 @@ from research_copilot.page_layout import PageLayout, extract_page_layout
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.paper_structure import PaperStructure
 from research_copilot.language_preferences import PaperLanguagePreferenceStore
+from research_copilot.library_organization import (
+    LibraryCollection,
+    LibraryOrganizationStore,
+    PaperOrganization,
+)
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.reading_service import ReadingService
 from research_copilot.selection_context import SelectionContextPreview
@@ -67,6 +77,9 @@ DEFAULT_LANGUAGE_PREFERENCES_DIRECTORY = (
 )
 DEFAULT_GLOSSARY_DIRECTORY = PROJECT_ROOT / "artifacts" / "glossary"
 DEFAULT_PAGE_TRANSLATION_DIRECTORY = PROJECT_ROOT / "artifacts" / "page_translations"
+DEFAULT_LIBRARY_ORGANIZATION_DIRECTORY = (
+    PROJECT_ROOT / "artifacts" / "library_organization"
+)
 
 
 class PaperSearchRequest(BaseModel):
@@ -166,6 +179,49 @@ class PageTranslationRequest(BaseModel):
     refresh: bool = False
 
 
+class LibraryCollectionCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+
+
+class PaperOrganizationUpdate(BaseModel):
+    collection_ids: list[str] = Field(default_factory=list, max_length=100)
+    tags: list[str] = Field(default_factory=list, max_length=20)
+
+
+class LibrarySearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=200)
+    paper_ids: list[str] = Field(max_length=500)
+    limit: int = Field(default=20, ge=1, le=50)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_contain_text(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("query must contain text")
+        return cleaned
+
+
+class ResearchEvidenceRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=200)
+    paper_ids: list[str] = Field(min_length=2, max_length=8)
+    per_paper_limit: int = Field(default=3, ge=1, le=5)
+
+    @field_validator("query")
+    @classmethod
+    def query_must_contain_text(cls, value: str) -> str:
+        cleaned = " ".join(value.split())
+        if not cleaned:
+            raise ValueError("query must contain text")
+        return cleaned
+
+    @model_validator(mode="after")
+    def paper_scope_must_be_unique(self) -> "ResearchEvidenceRequest":
+        if len(set(self.paper_ids)) != len(self.paper_ids):
+            raise ValueError("研究集合不能包含重复论文。")
+        return self
+
+
 def create_app(
     paper_directory: Path | None = None,
     processed_directory: Path | None = None,
@@ -180,6 +236,7 @@ def create_app(
     language_preference_store: PaperLanguagePreferenceStore | None = None,
     glossary_store: PaperGlossaryStore | None = None,
     page_translation_service: PageTranslationService | None = None,
+    library_organization_store: LibraryOrganizationStore | None = None,
 ) -> FastAPI:
     library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
@@ -215,6 +272,14 @@ def create_app(
         glossary,
         page_translation_directory,
     )
+    organization_directory = (
+        history.root_directory.parent / "library_organization"
+        if history_store is not None
+        else DEFAULT_LIBRARY_ORGANIZATION_DIRECTORY
+    )
+    organization = library_organization_store or LibraryOrganizationStore(
+        organization_directory
+    )
     reader = reading_service or ReadingService(
         answerer,
         history,
@@ -244,7 +309,171 @@ def create_app(
 
     @app.get("/api/papers", response_model=list[PaperSummary])
     def list_papers() -> list[PaperSummary]:
-        return library.list_papers()
+        return [
+            paper.model_copy(
+                update=organization.get_paper(paper.id).model_dump(mode="json")
+            )
+            for paper in library.list_papers()
+        ]
+
+    @app.get("/api/library/collections", response_model=list[LibraryCollection])
+    def list_library_collections() -> list[LibraryCollection]:
+        return organization.list_collections()
+
+    @app.post("/api/library/collections", response_model=LibraryCollection)
+    def create_library_collection(
+        request: LibraryCollectionCreate,
+    ) -> LibraryCollection:
+        try:
+            return organization.create_collection(request.name)
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.delete("/api/library/collections/{collection_id}")
+    def delete_library_collection(collection_id: str) -> dict[str, str]:
+        try:
+            organization.delete_collection(collection_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Collection not found.") from error
+        return {"status": "deleted"}
+
+    @app.post("/api/library/search", response_model=LibrarySearchResponse)
+    def search_library(request: LibrarySearchRequest) -> LibrarySearchResponse:
+        paper_ids = list(dict.fromkeys(request.paper_ids))
+        available = {paper.id: paper for paper in library.list_papers()}
+        unknown_ids = [paper_id for paper_id in paper_ids if paper_id not in available]
+        if unknown_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="搜索范围包含不存在的论文。",
+            )
+
+        results: list[LibrarySearchHit] = []
+        searched_paper_count = 0
+        skipped_paper_count = 0
+        per_paper_limit = min(5, request.limit)
+        for paper_id in paper_ids:
+            paper = available[paper_id]
+            try:
+                page_results, searchable = searcher.search_library_text(
+                    library.get_paper_path(paper_id),
+                    paper_id,
+                    request.query,
+                    limit=per_paper_limit,
+                )
+            except (OSError, ValueError, PyPdfError):
+                skipped_paper_count += 1
+                continue
+            if not searchable:
+                skipped_paper_count += 1
+                continue
+            searched_paper_count += 1
+            results.extend(
+                LibrarySearchHit(
+                    paper_id=paper_id,
+                    paper_name=paper.name,
+                    source_page=int(result["source_page"]),
+                    text=str(result["text"]),
+                    score=float(result["score"]),
+                )
+                for result in page_results
+            )
+
+        results.sort(
+            key=lambda result: (
+                -result.score,
+                result.paper_name.casefold(),
+                result.source_page,
+            )
+        )
+        return LibrarySearchResponse(
+            results=results[: request.limit],
+            requested_paper_count=len(paper_ids),
+            searched_paper_count=searched_paper_count,
+            skipped_paper_count=skipped_paper_count,
+        )
+
+    @app.post("/api/research/evidence", response_model=ResearchEvidenceResponse)
+    def collect_research_evidence(
+        request: ResearchEvidenceRequest,
+    ) -> ResearchEvidenceResponse:
+        available = {paper.id: paper for paper in library.list_papers()}
+        unknown_ids = [
+            paper_id for paper_id in request.paper_ids if paper_id not in available
+        ]
+        if unknown_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="研究集合包含不存在的论文。",
+            )
+
+        papers: list[ResearchPaperEvidence] = []
+        for paper_id in request.paper_ids:
+            paper = available[paper_id]
+            try:
+                page_results, searchable = searcher.search_library_text(
+                    library.get_paper_path(paper_id),
+                    paper_id,
+                    request.query,
+                    limit=request.per_paper_limit,
+                )
+            except (OSError, ValueError, PyPdfError):
+                page_results = []
+                searchable = False
+
+            hits = [
+                LibrarySearchHit(
+                    paper_id=paper_id,
+                    paper_name=paper.name,
+                    source_page=int(result["source_page"]),
+                    text=str(result["text"]),
+                    score=float(result["score"]),
+                )
+                for result in page_results
+            ]
+            status = "matched" if hits else "no_match" if searchable else "unsearchable"
+            papers.append(
+                ResearchPaperEvidence(
+                    paper_id=paper_id,
+                    paper_name=paper.name,
+                    status=status,
+                    hits=hits,
+                )
+            )
+
+        return ResearchEvidenceResponse(query=request.query, papers=papers)
+
+    @app.get(
+        "/api/papers/{paper_id}/organization",
+        response_model=PaperOrganization,
+    )
+    def get_paper_organization(paper_id: str) -> PaperOrganization:
+        try:
+            library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        return organization.get_paper(paper_id)
+
+    @app.put(
+        "/api/papers/{paper_id}/organization",
+        response_model=PaperOrganization,
+    )
+    def save_paper_organization(
+        paper_id: str,
+        request: PaperOrganizationUpdate,
+    ) -> PaperOrganization:
+        try:
+            library.get_paper_path(paper_id)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Paper not found.") from error
+        try:
+            return organization.save_paper(
+                paper_id,
+                request.collection_ids,
+                request.tags,
+            )
+        except ValueError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.get(
         "/api/papers/{paper_id}/language",

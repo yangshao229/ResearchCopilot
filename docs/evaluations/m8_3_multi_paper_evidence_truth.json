@@ -1,0 +1,73 @@
+{
+  "description": "Synthetic page-text fixtures for evaluating explicit multi-paper scope, source coverage, page recall, and status reporting. These are not real-paper quality claims.",
+  "papers": {
+    "alpha": {
+      "filename": "alpha.pdf",
+      "pages": [
+        "Overview of sequence models.",
+        "The attention mechanism compares a query with every key."
+      ]
+    },
+    "beta": {
+      "filename": "beta.pdf",
+      "pages": [
+        "Graph attention mechanism aggregates evidence from neighboring nodes.",
+        "Ablation results isolate the contribution of edge weights."
+      ]
+    },
+    "gamma": {
+      "filename": "gamma.pdf",
+      "pages": [
+        "Convolutional baselines use local receptive fields.",
+        "Training details and evaluation datasets."
+      ]
+    },
+    "broken": {
+      "filename": "broken.pdf",
+      "pages": null
+    }
+  },
+  "cases": [
+    {
+      "id": "two_sources_and_one_no_match",
+      "query": "attention mechanism",
+      "selected": ["alpha", "beta", "gamma"],
+      "expected_status": {
+        "alpha": "matched",
+        "beta": "matched",
+        "gamma": "no_match"
+      },
+      "expected_pages": {
+        "alpha": [2],
+        "beta": [1],
+        "gamma": []
+      }
+    },
+    {
+      "id": "scope_excludes_matching_paper",
+      "query": "edge weights",
+      "selected": ["alpha", "gamma"],
+      "expected_status": {
+        "alpha": "no_match",
+        "gamma": "no_match"
+      },
+      "expected_pages": {
+        "alpha": [],
+        "gamma": []
+      }
+    },
+    {
+      "id": "unsearchable_is_preserved",
+      "query": "sequence models",
+      "selected": ["alpha", "broken"],
+      "expected_status": {
+        "alpha": "matched",
+        "broken": "unsearchable"
+      },
+      "expected_pages": {
+        "alpha": [1],
+        "broken": []
+      }
+    }
+  ]
+}

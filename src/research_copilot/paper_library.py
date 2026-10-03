@@ -5,7 +5,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from research_copilot.source_language import (
@@ -25,6 +25,8 @@ class PaperSummary(BaseModel):
     relative_path: str
     page_count: int | None
     detected_source_language: DetectedSourceLanguage = "unknown"
+    collection_ids: list[str] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
 
 
 class PaperImportResult(BaseModel):
