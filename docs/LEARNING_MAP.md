@@ -624,3 +624,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：任务范围与长期集合的区别、请求携带完整论文 ID 范围、逐来源公平上限、分组证据与全局 Top-K 的差别、三态失败语义、浏览器 localStorage、范围变化使旧结果失效、来源覆盖/页码召回/范围泄漏指标，以及为什么合成聚合逻辑通过仍不能证明真实跨论文回答可靠。
 
 验证结果：固定合成账本的预期来源覆盖率 `1.00`（3/3）、页码召回率 `1.00`（3/3）、状态准确率 `1.00`（7/7）、范围泄漏率 `0.00`；完整测试 `143 passed`，前端生产构建通过。当前只有一篇真实本地论文，因此没有进行或声称真实跨论文准确率，也没有调用 DeepSeek、修改论文、阅读记录或翻译缓存。见 [M8.3 验收](M8_3_VALIDATION.md)。
+
+## M8.4a：真实双论文证据基线
+
+设计依据：[真实多论文证据评测拆解](research/2026-10-04-real-multi-paper-evaluation.md)。
+
+新增文件：`docs/research/2026-10-04-real-multi-paper-evaluation.md`、`docs/evaluations/m8_4a_real_two_paper_truth.json`、`src/research_copilot/real_multi_paper_evaluation.py`、`scripts/evaluate_real_multi_paper.py`、`tests/test_real_multi_paper_evaluation.py`、`docs/M8_4A_VALIDATION.md`。
+
+重要修改：`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。产品 API、前端、问答生成、用户数据和翻译缓存未改变。
+
+以后学习：真实 PDF 版本哈希、固定问题与人工页锚点、来源覆盖和页锚点覆盖的区别、已知无关证据下界、证据不足负例、范围泄漏、自然问题与逐词匹配的鸿沟、中英文跨语言检索边界、可复现失败基线，以及为什么评测暴露失败也可以完成一个里程碑。
+
+验证结果：两篇真实论文 6 个问题上，来源覆盖与人工页锚点覆盖均为 `0.556`（5/9），明确无证据准确率 `1.00`（3/3），已知无关证据率 `0.20`（3/15），范围泄漏 0；完整测试 `146 passed`，前端生产构建通过。评测只使用临时缓存，没有读取密钥、调用 DeepSeek 或修改论文和用户数据。结果明确阻止比较答案上线，下一步在同一账本上评测最小检索改进。见 [M8.4a 验收](M8_4A_VALIDATION.md)。
