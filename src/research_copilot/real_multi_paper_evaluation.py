@@ -9,9 +9,22 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from research_copilot.hybrid_retriever import hybrid_search_chunks
 from research_copilot.library_organization import LibraryOrganizationStore
+from research_copilot.page_store import load_page_data
+from research_copilot.pdf_importer import import_pdf_to_json
 from research_copilot.reading_history import ReadingHistoryStore
+from research_copilot.semantic_retriever import (
+    DEFAULT_EMBEDDING_MODEL,
+    E5EmbeddingModel,
+    EmbeddingModel,
+    semantic_search_chunks,
+)
+from research_copilot.text_splitter import chunk_pages
 from research_copilot.web_app import create_app
+
+
+EVALUATION_MODEL_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
 
 
 def file_sha256(path: Path) -> str:
@@ -159,4 +172,112 @@ def run(truth: dict[str, Any], paper_directory: Path) -> dict[str, Any]:
         "per_paper_limit": truth["per_paper_limit"],
         "metrics": summarize(cases),
         "cases": cases,
+    }
+
+
+class _CachedEmbeddingModel:
+    def __init__(self, model: EmbeddingModel) -> None:
+        self.model = model
+        self.query_cache: dict[str, list[float]] = {}
+        self.passage_cache: dict[tuple[str, ...], list[list[float]]] = {}
+
+    def embed_query(self, query: str) -> list[float]:
+        if query not in self.query_cache:
+            self.query_cache[query] = self.model.embed_query(query)
+        return self.query_cache[query]
+
+    def embed_passages(self, passages: list[str]) -> list[list[float]]:
+        key = tuple(passages)
+        if key not in self.passage_cache:
+            self.passage_cache[key] = self.model.embed_passages(passages)
+        return self.passage_cache[key]
+
+
+def _top_distinct_pages(
+    chunks: list[dict[str, int | float | str]],
+    limit: int,
+) -> list[int]:
+    pages: list[int] = []
+    seen: set[int] = set()
+    for chunk in chunks:
+        page = int(chunk["source_page"])
+        if page in seen:
+            continue
+        seen.add(page)
+        pages.append(page)
+        if len(pages) == limit:
+            break
+    return pages
+
+
+def compare_strategies(
+    truth: dict[str, Any],
+    paper_directory: Path,
+    embedding_model: EmbeddingModel | None = None,
+) -> dict[str, Any]:
+    """Compare existing chunk retrievers against the locked page-search baseline."""
+    paths = check_papers(truth, paper_directory)
+    baseline = run(truth, paper_directory)
+    cached_model = _CachedEmbeddingModel(
+        embedding_model
+        or E5EmbeddingModel(
+            local_files_only=True,
+            revision=EVALUATION_MODEL_REVISION,
+        )
+    )
+    candidates: dict[str, list[dict[str, Any]]] = {
+        "semantic": [],
+        "hybrid": [],
+    }
+
+    with TemporaryDirectory(prefix="research-copilot-m8-4b-") as temporary:
+        chunks_by_alias: dict[str, list[dict[str, int | str]]] = {}
+        for alias, path in paths.items():
+            page_data_path = Path(temporary) / f"{alias}.json"
+            import_pdf_to_json(path, page_data_path)
+            pages = load_page_data(page_data_path)["pages"]
+            chunks_by_alias[alias] = chunk_pages(pages)
+
+        limit = int(truth["per_paper_limit"])
+        candidate_pool = max(limit * 8, 20)
+        for case in truth["cases"]:
+            for strategy in candidates:
+                paper_results: dict[str, dict[str, Any]] = {}
+                for alias, chunks in chunks_by_alias.items():
+                    if strategy == "semantic":
+                        ranked = semantic_search_chunks(
+                            case["query"], chunks, cached_model, limit=candidate_pool
+                        )
+                    else:
+                        ranked = hybrid_search_chunks(
+                            case["query"], chunks, cached_model, limit=candidate_pool
+                        )
+                    paper_results[alias] = {
+                        "paper_id": alias,
+                        "status": "matched" if ranked else "no_match" if chunks else "unsearchable",
+                        "hits": [
+                            {"paper_id": alias, "source_page": page}
+                            for page in _top_distinct_pages(ranked, limit)
+                        ],
+                    }
+                candidates[strategy].append(score_case(case, paper_results))
+
+    check_papers(truth, paper_directory)
+    return {
+        "dataset_id": truth["dataset_id"],
+        "per_paper_limit": truth["per_paper_limit"],
+        "embedding_model": DEFAULT_EMBEDDING_MODEL,
+        "embedding_revision": EVALUATION_MODEL_REVISION,
+        "chunk_size": 1000,
+        "chunk_overlap": 100,
+        "strategies": {
+            "page_keyword": {
+                "metrics": baseline["metrics"],
+                "cases": baseline["cases"],
+            },
+            **{
+                strategy: {"metrics": summarize(cases), "cases": cases}
+                for strategy, cases in candidates.items()
+            },
+        },
     }

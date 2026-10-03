@@ -636,3 +636,15 @@ Git：`ee33940 feat: persist reviewable reading records`
 以后学习：真实 PDF 版本哈希、固定问题与人工页锚点、来源覆盖和页锚点覆盖的区别、已知无关证据下界、证据不足负例、范围泄漏、自然问题与逐词匹配的鸿沟、中英文跨语言检索边界、可复现失败基线，以及为什么评测暴露失败也可以完成一个里程碑。
 
 验证结果：两篇真实论文 6 个问题上，来源覆盖与人工页锚点覆盖均为 `0.556`（5/9），明确无证据准确率 `1.00`（3/3），已知无关证据率 `0.20`（3/15），范围泄漏 0；完整测试 `146 passed`，前端生产构建通过。评测只使用临时缓存，没有读取密钥、调用 DeepSeek 或修改论文和用户数据。结果明确阻止比较答案上线，下一步在同一账本上评测最小检索改进。见 [M8.4a 验收](M8_4A_VALIDATION.md)。
+
+## M8.4b：真实双论文检索策略对照
+
+设计依据：[多论文检索策略对照拆解](research/2026-10-04-multi-paper-retrieval-strategy.md)。
+
+新增文件：`docs/research/2026-10-04-multi-paper-retrieval-strategy.md`、`scripts/compare_real_multi_paper_retrieval.py`、`docs/M8_4B_VALIDATION.md`。
+
+重要修改：`src/research_copilot/real_multi_paper_evaluation.py`、`src/research_copilot/semantic_retriever.py`、`tests/test_real_multi_paper_evaluation.py`、`PROJECT.md`、`docs/PRODUCT_BLUEPRINT.md`、`docs/LEARNING_MAP.md`。网页 API、前端、用户阅读数据和翻译缓存未改变。
+
+以后学习：关键词检索与 Embedding 检索的不同失败模式、E5 的查询/段落前缀、RRF 混合排序、切块结果按 PDF 页去重、固定模型修订与离线复现、来源召回不等于页码证据可信、已知无关页只是误报下界、为什么向量检索会在无答案时也给出最近的内容，以及拒答门槛为何必须单独评测。
+
+验证结果：同一双论文真值上，混合检索人工页锚点为 `8/9`，高于逐页关键词的 `5/9`；但三个预期无证据组合均返回了页，不能直接上线跨论文生成。完整测试 `148 passed`，前端生产构建通过。详见 [M8.4b 验收](M8_4B_VALIDATION.md)。

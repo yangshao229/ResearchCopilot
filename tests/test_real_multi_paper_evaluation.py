@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 
 from research_copilot.real_multi_paper_evaluation import (
+    _CachedEmbeddingModel,
+    _top_distinct_pages,
     check_papers,
     run,
     score_case,
@@ -39,6 +41,38 @@ def test_check_papers_requires_exact_files_and_hashes(tmp_path: Path) -> None:
 
     path.write_bytes(content)
     assert check_papers(truth, tmp_path) == {"sample": path}
+
+
+def test_candidate_pages_are_unique_and_keep_rank_order() -> None:
+    ranked = [
+        {"source_page": 4},
+        {"source_page": 4},
+        {"source_page": 6},
+        {"source_page": 2},
+    ]
+    assert _top_distinct_pages(ranked, 2) == [4, 6]
+
+
+def test_embedding_cache_reuses_identical_passages_and_queries() -> None:
+    class FakeModel:
+        def __init__(self) -> None:
+            self.query_calls = 0
+            self.passage_calls = 0
+
+        def embed_query(self, query: str) -> list[float]:
+            self.query_calls += 1
+            return [float(len(query))]
+
+        def embed_passages(self, passages: list[str]) -> list[list[float]]:
+            self.passage_calls += 1
+            return [[float(len(passage))] for passage in passages]
+
+    fake = FakeModel()
+    cached = _CachedEmbeddingModel(fake)
+    assert cached.embed_query("位置") == cached.embed_query("位置")
+    assert cached.embed_passages(["text"]) == cached.embed_passages(["text"])
+    assert fake.query_calls == 1
+    assert fake.passage_calls == 1
 
 
 def test_scores_relevance_noise_no_match_and_scope_leakage() -> None:

@@ -12,10 +12,20 @@ class EmbeddingModel(Protocol):
 
 
 class E5EmbeddingModel:
-    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL) -> None:
+    def __init__(
+        self,
+        model_name: str = DEFAULT_EMBEDDING_MODEL,
+        *,
+        local_files_only: bool = False,
+        revision: str | None = None,
+    ) -> None:
         from sentence_transformers import SentenceTransformer
 
-        self._model = SentenceTransformer(model_name)
+        self._model = SentenceTransformer(
+            model_name,
+            local_files_only=local_files_only,
+            revision=revision,
+        )
 
     def embed_query(self, query: str) -> list[float]:
         embedding = self._model.encode(
