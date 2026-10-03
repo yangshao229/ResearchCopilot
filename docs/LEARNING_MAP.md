@@ -575,4 +575,16 @@ Git：`ee33940 feat: persist reviewable reading records`
 
 以后学习：PDF 文字层为何丢失上/下标、正则只用于候选而非数学重建、`pdfplumber` 字符坐标、视觉行与唯一匹配、原文小裁片、模型占位符校验、Pydantic 可选字段兼容性、前端行内画布与块级原图、缓存版本失效、真实模型与假模型验收的差别。
 
-验证结果：完整测试 `131 passed`、前端构建通过；真实 `sample.pdf` 第 7 页找到三处唯一行内参数，假模型服务流程收到五个公式占位符；未调用 DeepSeek。网页工作台可打开，但新译文尚未做真实模型视觉验收。见 [M7.4d 验收](M7_4D_VALIDATION.md)。
+验证结果：初次完整测试 `131 passed`、前端构建通过；真实 `sample.pdf` 第 7 页找到三处唯一行内参数，假模型服务流程收到五个公式占位符。之后只调用一次 DeepSeek 完成真实译文，网页确认三处行内原图、两处独立公式及缓存读取；见 [M7.4d 验收](M7_4D_VALIDATION.md)。
+
+## M7.4e：行内数学真值与误报评测
+
+设计依据：[行内数学保护真值与误报评测拆解](research/2026-10-03-inline-math-evaluation.md)。
+
+新增文件：`docs/research/2026-10-03-inline-math-evaluation.md`、`docs/evaluations/m7_4e_inline_math_truth.json`、`tests/test_inline_formula_evaluation.py`、`docs/M7_4E_VALIDATION.md`。
+
+重要修改：`docs/PRODUCT_BLUEPRINT.md`、`PROJECT.md`、`docs/LEARNING_MAP.md`。生产公式识别、API、缓存和前端未改变。
+
+以后学习：如何把受支持召回、普通文本误报和歧义数学安全回退分开计分，人工真值与合成排版轮廓的边界，为什么坐标唯一只证明原页位置、不证明数学语义，以及规则没有足够真实样本时为何“不扩大”也是可验证的工程结果。
+
+验证结果：14 个账本案例中受支持召回率 `1.00`（4/4）、明确负样本误报率 `0.00`（0/2）、安全回退率 `1.00`（8/8）；本机真实 `sample.pdf` 第 7 页三处行内区域稳定且 PDF SHA-256 未变化。该原始 PDF 不随 Git 同步，其他设备缺失时只跳过真实样本核对。完整测试与前端构建通过；本阶段没有调用 DeepSeek，也没有把合成结果表述为跨论文真实准确率。见 [M7.4e 验收](M7_4E_VALIDATION.md)。

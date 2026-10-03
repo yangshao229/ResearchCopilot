@@ -1,0 +1,122 @@
+{
+  "schema_version": 1,
+  "scope": "Synthetic born-digital PDF character layouts plus one separately tested real sample.pdf anchor; this is not a cross-paper accuracy claim.",
+  "cases": [
+    {
+      "id": "latex_beta_subscript",
+      "profile": "latex-like subscript parameter",
+      "expected": "protect",
+      "source_text": "Optimizer used β1 = 0.9 before training.",
+      "glyph_text": "β1=0.9",
+      "reason": "Supported Greek assignment with one visual occurrence."
+    },
+    {
+      "id": "latex_epsilon_exponent",
+      "profile": "latex-like scientific notation",
+      "expected": "protect",
+      "source_text": "Stability used ϵ = 10−9 for every run.",
+      "glyph_text": "ϵ=10−9",
+      "reason": "Supported Greek assignment whose exponent typography must remain an image."
+    },
+    {
+      "id": "publisher_uppercase_gamma",
+      "profile": "publisher uppercase Greek parameter",
+      "expected": "protect",
+      "source_text": "Set Γ = 0.95 before training.",
+      "glyph_text": "Γ=0.95",
+      "reason": "Supported uppercase Greek assignment with a unique row."
+    },
+    {
+      "id": "journal_eta_decimal",
+      "profile": "journal compact decimal parameter",
+      "expected": "protect",
+      "source_text": "Use η2 = 0.001 for decay.",
+      "glyph_text": "η2=0.001",
+      "reason": "Supported indexed Greek assignment with different spacing and precision."
+    },
+    {
+      "id": "greek_prose",
+      "profile": "non-mathematical Greek prose",
+      "expected": "leave",
+      "source_text": "Η θεωρία αυτή περιγράφει ένα σύστημα.",
+      "glyph_text": "Ηθεωρίααυτή",
+      "reason": "Greek letters without a numeric assignment are ordinary content."
+    },
+    {
+      "id": "ordinary_english_equals",
+      "profile": "ordinary prose containing equals punctuation",
+      "expected": "leave",
+      "source_text": "The label = sign is discussed in this sentence.",
+      "glyph_text": "label=sign",
+      "reason": "An equals sign alone is not inline mathematics."
+    },
+    {
+      "id": "ascii_variable_assignment",
+      "profile": "unsupported ASCII variable",
+      "expected": "safe_fallback",
+      "source_text": "Use x = 3 in the proof.",
+      "glyph_text": "x=3",
+      "reason": "Potential mathematics outside the deliberately narrow Greek-parameter scope."
+    },
+    {
+      "id": "function_expression",
+      "profile": "unsupported function expression",
+      "expected": "safe_fallback",
+      "source_text": "Compute f(x) = x2 + 1 before normalization.",
+      "glyph_text": "f(x)=x2+1",
+      "reason": "General formulas require structural truth and are not reconstructed."
+    },
+    {
+      "id": "duplicate_visual_occurrence",
+      "profile": "same glyph run on two visual rows",
+      "expected": "safe_fallback",
+      "source_text": "The parameter β1 = 0.9 is reported.",
+      "glyph_text": "β1=0.9",
+      "visual_copies": 2,
+      "reason": "Coordinates are ambiguous even though source text occurs once."
+    },
+    {
+      "id": "duplicate_source_occurrence",
+      "profile": "same source expression twice",
+      "expected": "safe_fallback",
+      "source_text": "β1 = 0.9 occurs; β1 = 0.9 occurs again.",
+      "glyph_text": "β1=0.9",
+      "reason": "A single visual box cannot be assigned safely to two source occurrences."
+    },
+    {
+      "id": "glyph_value_mismatch",
+      "profile": "text layer and visible value disagree",
+      "expected": "safe_fallback",
+      "source_text": "Use β1 = 0.9 in the model.",
+      "glyph_text": "β1=0.8",
+      "reason": "The visible glyph sequence must match exactly."
+    },
+    {
+      "id": "split_visual_rows",
+      "profile": "expression split across visual rows",
+      "expected": "safe_fallback",
+      "source_text": "Use β1 = 0.9 in the model.",
+      "glyph_text": "β1=0.9",
+      "split_after": 3,
+      "reason": "An inline crop must not merge two rows."
+    },
+    {
+      "id": "rotated_page",
+      "profile": "rotated born-digital page",
+      "expected": "safe_fallback",
+      "source_text": "Use β1 = 0.9 in the model.",
+      "glyph_text": "β1=0.9",
+      "rotation": 90,
+      "reason": "Current top-left crop assumptions are not certified for rotation."
+    },
+    {
+      "id": "out_of_page_bounds",
+      "profile": "invalid extracted coordinates",
+      "expected": "safe_fallback",
+      "source_text": "Use β1 = 0.9 in the model.",
+      "glyph_text": "β1=0.9",
+      "left": 700,
+      "reason": "A region outside the page must never reach the UI."
+    }
+  ]
+}
