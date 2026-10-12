@@ -8,6 +8,8 @@ from uuid import uuid4
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
+from research_copilot.paper_identity import PaperIdentityStore, PaperVersionStatus, hash_pdf
+from research_copilot.domain import SourceDocumentRef
 from research_copilot.source_language import (
     DetectedSourceLanguage,
     detect_source_language,
@@ -21,6 +23,9 @@ MAX_PDF_UPLOAD_BYTES = 100 * 1024 * 1024
 
 class PaperSummary(BaseModel):
     id: str
+    paper_uid: str | None = None
+    pdf_sha256: str | None = None
+    pdf_version_status: PaperVersionStatus | None = None
     name: str
     relative_path: str
     page_count: int | None
@@ -36,8 +41,13 @@ class PaperImportResult(BaseModel):
 
 
 class PaperLibrary:
-    def __init__(self, paper_directory: Path) -> None:
+    def __init__(
+        self,
+        paper_directory: Path,
+        identity_store: PaperIdentityStore | None = None,
+    ) -> None:
         self.paper_directory = paper_directory.resolve()
+        self.identity_store = identity_store
 
     def list_papers(self) -> list[PaperSummary]:
         return [self._summarize(path) for path in self._pdf_paths()]
@@ -47,6 +57,21 @@ class PaperLibrary:
             if self._paper_id(path) == paper_id:
                 return path
         raise KeyError(paper_id)
+
+    def source_document(self, paper_id: str) -> SourceDocumentRef | None:
+        """Resolve the exact local PDF version without parsing every page."""
+        path = self.get_paper_path(paper_id)
+        if self.identity_store is None:
+            return None
+        identity = self.identity_store.resolve(
+            legacy_paper_id=paper_id,
+            relative_path=self._relative_path(path),
+            pdf_sha256=self._file_digest(path),
+        )
+        return SourceDocumentRef(
+            paper_uid=identity.paper_uid,
+            pdf_sha256=identity.pdf_sha256,
+        )
 
     def import_pdf(self, filename: str, content: bytes) -> PaperImportResult:
         if not content or len(content) > MAX_PDF_UPLOAD_BYTES:
@@ -107,10 +132,22 @@ class PaperLibrary:
         except Exception:
             page_count = None
             detected_language = "unknown"
+        paper_id = self._paper_id(path)
+        relative_path = self._relative_path(path)
+        identity = None
+        if self.identity_store is not None:
+            identity = self.identity_store.resolve(
+                legacy_paper_id=paper_id,
+                relative_path=relative_path,
+                pdf_sha256=self._file_digest(path),
+            )
         return PaperSummary(
-            id=self._paper_id(path),
+            id=paper_id,
+            paper_uid=identity.paper_uid if identity else None,
+            pdf_sha256=identity.pdf_sha256 if identity else None,
+            pdf_version_status=identity.version_status if identity else None,
             name=path.name,
-            relative_path=self._relative_path(path),
+            relative_path=relative_path,
             page_count=page_count,
             detected_source_language=detected_language,
         )
@@ -125,11 +162,7 @@ class PaperLibrary:
 
     @staticmethod
     def _file_digest(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as source_file:
-            for block in iter(lambda: source_file.read(1024 * 1024), b""):
-                digest.update(block)
-        return digest.hexdigest()
+        return hash_pdf(path)
 
     def _available_path(self, filename: str) -> Path:
         candidate = self.paper_directory / filename

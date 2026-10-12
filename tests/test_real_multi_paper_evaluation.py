@@ -1,17 +1,25 @@
 import hashlib
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+import torch
 
 from research_copilot.real_multi_paper_evaluation import (
     _CachedEmbeddingModel,
+    _choose_calibration_threshold,
+    _is_short_term_query,
+    _page_level_rrf,
+    _score_gate_cases,
+    _score_sufficiency_cases,
     _top_distinct_pages,
     check_papers,
     run,
     score_case,
     summarize,
 )
+from research_copilot.semantic_retriever import E5TokenAlignmentModel
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -53,6 +61,63 @@ def test_candidate_pages_are_unique_and_keep_rank_order() -> None:
     assert _top_distinct_pages(ranked, 2) == [4, 6]
 
 
+def test_page_level_rrf_can_recover_a_page_across_rankers() -> None:
+    semantic = [
+        {"source_page": 5},
+        {"source_page": 6},
+        {"source_page": 7},
+        {"source_page": 9},
+    ]
+    hybrid = [
+        {"source_page": 5},
+        {"source_page": 9},
+        {"source_page": 7},
+        {"source_page": 6},
+    ]
+
+    assert _page_level_rrf(semantic, hybrid, 3) == [5, 6, 9]
+
+
+def test_evidence_gate_distinguishes_short_terms_from_natural_questions() -> None:
+    assert _is_short_term_query("masked language model")
+    assert _is_short_term_query("quantum entanglement")
+    assert not _is_short_term_query("How do the papers encode token positions?")
+    assert not _is_short_term_query("两篇论文如何表示词的位置？")
+
+
+def test_evidence_gate_uses_phrase_for_terms_and_cosine_for_questions() -> None:
+    prepared = [
+        {
+            "truth": {
+                "id": "gate",
+                "query": "fixed",
+                "relevant_pages": {"term": [], "question": [4]},
+                "known_irrelevant_pages": {"term": [], "question": []},
+            },
+            "papers": {
+                "term": {
+                    "pages": [1],
+                    "gate_kind": "exact_phrase",
+                    "exact_phrase_match": False,
+                    "max_semantic_similarity": 0.99,
+                },
+                "question": {
+                    "pages": [4],
+                    "gate_kind": "cosine",
+                    "exact_phrase_match": False,
+                    "max_semantic_similarity": 0.82,
+                },
+            },
+        }
+    ]
+
+    scored = _score_gate_cases(prepared, threshold=0.81)[0]["papers"]
+
+    assert scored["term"]["status"] == "no_match"
+    assert scored["question"]["status"] == "matched"
+    assert scored["question"]["anchor_found"] is True
+
+
 def test_embedding_cache_reuses_identical_passages_and_queries() -> None:
     class FakeModel:
         def __init__(self) -> None:
@@ -73,6 +138,96 @@ def test_embedding_cache_reuses_identical_passages_and_queries() -> None:
     assert cached.embed_passages(["text"]) == cached.embed_passages(["text"])
     assert fake.query_calls == 1
     assert fake.passage_calls == 1
+
+
+def test_token_alignment_scores_content_tokens_and_ignores_special_tokens() -> None:
+    class FakeTokenizer:
+        def __call__(self, texts: list[str], **_: object) -> dict[str, torch.Tensor]:
+            rows = []
+            for text in texts:
+                content = 2 if "matching" in text or text.startswith("query:") else 3
+                rows.append([9, content, 8, 0])
+            count = len(rows)
+            return {
+                "input_ids": torch.tensor(rows),
+                "attention_mask": torch.tensor([[1, 1, 1, 0]] * count),
+                "special_tokens_mask": torch.tensor([[1, 0, 1, 1]] * count),
+            }
+
+    class FakeModel:
+        def __call__(self, *, input_ids: torch.Tensor, **_: object) -> object:
+            return SimpleNamespace(
+                last_hidden_state=torch.nn.functional.one_hot(
+                    input_ids, num_classes=10
+                ).float()
+            )
+
+    scorer = object.__new__(E5TokenAlignmentModel)
+    scorer._tokenizer = FakeTokenizer()
+    scorer._model = FakeModel()
+    scorer._max_length = 8
+    scorer._device = torch.device("cpu")
+
+    matching, unrelated = scorer.score_pairs(
+        "question", ["matching evidence", "unrelated evidence"]
+    )
+
+    assert matching == pytest.approx(1.0)
+    assert unrelated == pytest.approx(0.0)
+
+
+def test_fine_grained_threshold_uses_only_calibration_split() -> None:
+    prepared = [
+        {
+            "truth": {
+                "id": "positive",
+                "split": "calibration",
+                "query": "q",
+                "relevant_pages": {"paper": [2]},
+                "known_irrelevant_pages": {"paper": []},
+            },
+            "papers": {
+                "paper": {"pages": [2], "evidence_sufficiency_score": 0.8}
+            },
+        },
+        {
+            "truth": {
+                "id": "negative",
+                "split": "calibration",
+                "query": "q",
+                "relevant_pages": {"paper": []},
+                "known_irrelevant_pages": {"paper": []},
+            },
+            "papers": {
+                "paper": {"pages": [1], "evidence_sufficiency_score": 0.7}
+            },
+        },
+        {
+            "truth": {
+                "id": "held-out",
+                "split": "held_out",
+                "query": "q",
+                "relevant_pages": {"paper": []},
+                "known_irrelevant_pages": {"paper": []},
+            },
+            "papers": {
+                "paper": {"pages": [3], "evidence_sufficiency_score": 0.99}
+            },
+        },
+    ]
+
+    selected = _choose_calibration_threshold(prepared)
+    scored = _score_sufficiency_cases(prepared, float(selected["threshold"]))
+
+    assert selected == {
+        "threshold": 0.8,
+        "positive_floor": 0.8,
+        "negative_ceiling": 0.7,
+        "separable": True,
+    }
+    assert scored[0]["papers"]["paper"]["status"] == "matched"
+    assert scored[1]["papers"]["paper"]["status"] == "no_match"
+    assert scored[2]["papers"]["paper"]["status"] == "matched"
 
 
 def test_scores_relevance_noise_no_match_and_scope_leakage() -> None:

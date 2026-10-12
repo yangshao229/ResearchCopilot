@@ -44,7 +44,7 @@ def semantic_search_page_data(
     chunks = _load_chunks(page_data_path, chunk_size, overlap, scope)
     if not chunks:
         return []
-    model = embedding_model or E5EmbeddingModel(model_name)
+    model = embedding_model or E5EmbeddingModel(model_name, local_files_only=True)
     return semantic_search_chunks(
         query,
         chunks,
@@ -66,7 +66,7 @@ def hybrid_search_page_data(
     chunks = _load_chunks(page_data_path, chunk_size, overlap, scope)
     if not chunks:
         return []
-    model = embedding_model or E5EmbeddingModel(model_name)
+    model = embedding_model or E5EmbeddingModel(model_name, local_files_only=True)
     return hybrid_search_chunks(
         query,
         chunks,

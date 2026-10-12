@@ -230,6 +230,34 @@ def test_answer_fails_closed_when_model_cites_unknown_evidence() -> None:
     assert "引用校验" in answer.uncertainty
 
 
+def test_answer_fails_closed_when_one_of_multiple_citations_is_unknown() -> None:
+    model = FakeAnswerModel(
+        ModelAnswerDraft(
+            answer="Unsupported conclusion despite a valid-looking citation.",
+            explanation="The second reference is invented.",
+            cited_evidence_ids=[1, 99],
+            insufficient_evidence=False,
+            uncertainty="",
+        )
+    )
+    service = PaperAnswerService(
+        FakeSearchService([
+            {"source_page": 2, "chunk_index": 0,
+             "text": "One real excerpt.", "score": 0.9}
+        ]),
+        model,
+    )
+
+    answer = service.answer(
+        Path("paper.pdf"), "paper-id", "What happened?", "hybrid",
+    )
+
+    assert answer.insufficient_evidence is True
+    assert answer.citations == []
+    assert "Unsupported conclusion" not in answer.answer
+    assert answer.evidence[0].text == "One real excerpt."
+
+
 def test_answer_skips_model_when_retrieval_finds_no_evidence() -> None:
     model = FakeAnswerModel(
         ModelAnswerDraft(
@@ -251,6 +279,73 @@ def test_answer_skips_model_when_retrieval_finds_no_evidence() -> None:
 
     assert answer.insufficient_evidence is True
     assert model.received_evidence == []
+
+
+@pytest.mark.parametrize(
+    ("language", "question", "expected_refusal"),
+    [
+        (LanguagePolicy(explanation_language="zh-CN"), "论文结论是什么？", "证据不足"),
+        (LanguagePolicy(explanation_language="en"), "What is the conclusion?", "insufficient"),
+        (LanguagePolicy(), "What is the conclusion?", "insufficient"),
+    ],
+)
+def test_model_declared_insufficiency_never_exposes_asserted_conclusion(
+    language: LanguagePolicy, question: str, expected_refusal: str,
+) -> None:
+    model = FakeAnswerModel(
+        ModelAnswerDraft(
+            answer="论文证明了一个未经证实的结论。",
+            explanation="错误地把相关片段当成了依据。",
+            cited_evidence_ids=[1],
+            insufficient_evidence=True,
+            uncertainty="材料不充分。",
+        )
+    )
+    service = PaperAnswerService(
+        FakeSearchService([
+            {"source_page": 4, "chunk_index": 0,
+             "text": "The paper mentions an unrelated topic.", "score": 0.9}
+        ]),
+        model,
+    )
+
+    answer = service.answer(
+        Path("paper.pdf"), "paper-id", question, "hybrid", language=language,
+    )
+
+    assert answer.insufficient_evidence is True
+    assert expected_refusal in answer.answer.lower()
+    assert "未经证实" not in answer.answer
+    assert "错误地" not in answer.explanation
+    assert answer.citations == []
+    assert answer.evidence[0].source_page == 4
+
+
+def test_failed_selection_translation_does_not_show_partial_model_text() -> None:
+    model = FakeAnswerModel(
+        ModelAnswerDraft(
+            answer="Unverified partial translation",
+            explanation="Unverified explanation",
+            cited_evidence_ids=[1],
+            insufficient_evidence=True,
+            uncertainty="Incomplete",
+        )
+    )
+    service = PaperAnswerService(FakeSearchService([]), model)
+
+    answer = service.answer(
+        Path("paper.pdf"), "paper-id", "翻译选中的句子", "hybrid",
+        task="translate",
+        direct_evidence=[
+            {"source_page": 3, "chunk_index": 0,
+             "text": "Selected text.", "score": 1.0}
+        ],
+    )
+
+    assert answer.insufficient_evidence is True
+    assert "Unverified" not in answer.answer + answer.explanation
+    assert answer.citations == []
+    assert answer.evidence[0].source_page == 3
 
 
 class FakeHttpResponse:
@@ -320,6 +415,7 @@ def test_deepseek_model_requests_structured_json() -> None:
     text_config = request_body["text"]
     assert isinstance(text_config, dict)
     assert text_config["format"]["type"] == "json_schema"  # type: ignore[index]
+    assert request_body["reasoning"] == {"effort": "none"}
     assert "PDF 第 3 页" in str(request_body["input"])
     assert "English" in str(request_body["input"])
     assert post.url == "https://api.deepseek.com/responses"
@@ -340,4 +436,23 @@ def test_deepseek_model_rejects_invalid_json() -> None:
     )
 
     with pytest.raises(AnswerGenerationError):
+        model.generate("问题", [])
+
+
+def test_deepseek_model_reports_incomplete_answer_without_saving() -> None:
+    class IncompleteResponse:
+        status_code = 200
+
+        def json(self) -> dict[str, object]:
+            return {
+                "status": "incomplete",
+                "incomplete_details": {"reason": "max_output_tokens"},
+                "output": [],
+            }
+
+    model = DeepSeekAnswerModel(
+        api_key="test-key", post=lambda *args, **kwargs: IncompleteResponse()
+    )
+
+    with pytest.raises(AnswerGenerationError, match="token 上限"):
         model.generate("问题", [])

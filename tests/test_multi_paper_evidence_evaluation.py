@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from research_copilot.page_store import save_page_data
+from research_copilot.paper_identity import hash_pdf
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.web_app import create_app
 
@@ -61,6 +62,7 @@ def _build_client(tmp_path: Path) -> tuple[TestClient, dict[str, str], dict[str,
         save_page_data(
             {
                 "source_pdf": fixture["filename"],
+                "source_pdf_sha256": hash_pdf(papers / fixture["filename"]),
                 "pages": [
                     {"source_page": number, "text": text}
                     for number, text in enumerate(fixture["pages"], start=1)

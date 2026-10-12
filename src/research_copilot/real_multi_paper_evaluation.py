@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import hashlib
+import math
+import re
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -10,21 +12,27 @@ from typing import Any
 from fastapi.testclient import TestClient
 
 from research_copilot.hybrid_retriever import hybrid_search_chunks
+from research_copilot.keyword_retriever import search_chunks
 from research_copilot.library_organization import LibraryOrganizationStore
 from research_copilot.page_store import load_page_data
 from research_copilot.pdf_importer import import_pdf_to_json
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.semantic_retriever import (
+    CachedEmbeddingModel,
     DEFAULT_EMBEDDING_MODEL,
+    DEFAULT_EMBEDDING_REVISION,
     E5EmbeddingModel,
+    E5TokenAlignmentModel,
     EmbeddingModel,
+    FineGrainedRelevanceModel,
     semantic_search_chunks,
 )
 from research_copilot.text_splitter import chunk_pages
 from research_copilot.web_app import create_app
 
 
-EVALUATION_MODEL_REVISION = "614241f622f53c4eeff9890bdc4f31cfecc418b3"
+EVALUATION_MODEL_REVISION = DEFAULT_EMBEDDING_REVISION
+EVIDENCE_GATE_THRESHOLDS = (0.80, 0.805, 0.81, 0.815, 0.82, 0.825, 0.83)
 
 
 def file_sha256(path: Path) -> str:
@@ -175,22 +183,7 @@ def run(truth: dict[str, Any], paper_directory: Path) -> dict[str, Any]:
     }
 
 
-class _CachedEmbeddingModel:
-    def __init__(self, model: EmbeddingModel) -> None:
-        self.model = model
-        self.query_cache: dict[str, list[float]] = {}
-        self.passage_cache: dict[tuple[str, ...], list[list[float]]] = {}
-
-    def embed_query(self, query: str) -> list[float]:
-        if query not in self.query_cache:
-            self.query_cache[query] = self.model.embed_query(query)
-        return self.query_cache[query]
-
-    def embed_passages(self, passages: list[str]) -> list[list[float]]:
-        key = tuple(passages)
-        if key not in self.passage_cache:
-            self.passage_cache[key] = self.model.embed_passages(passages)
-        return self.passage_cache[key]
+_CachedEmbeddingModel = CachedEmbeddingModel
 
 
 def _top_distinct_pages(
@@ -279,5 +272,328 @@ def compare_strategies(
                 strategy: {"metrics": summarize(cases), "cases": cases}
                 for strategy, cases in candidates.items()
             },
+        },
+    }
+
+
+def _page_level_rrf(
+    first: list[dict[str, int | float | str]],
+    second: list[dict[str, int | float | str]],
+    limit: int,
+) -> list[int]:
+    scores: dict[int, float] = {}
+    for ranked in (first, second):
+        for rank, page in enumerate(
+            _top_distinct_pages(ranked, len(ranked)), start=1
+        ):
+            scores[page] = scores.get(page, 0.0) + 1.0 / (60 + rank)
+    return [
+        page
+        for page, _ in sorted(scores.items(), key=lambda item: (-item[1], item[0]))[
+            :limit
+        ]
+    ]
+
+
+def _is_short_term_query(query: str) -> bool:
+    if re.search(r"[\u3400-\u9fff?？]", query):
+        return False
+    return len(re.findall(r"[A-Za-z0-9-]+", query)) <= 3
+
+
+def _normalized_phrase(text: str) -> str:
+    return " ".join(re.findall(r"[a-z0-9-]+", text.casefold()))
+
+
+def _score_gate_cases(
+    prepared: list[dict[str, Any]],
+    threshold: float | None,
+) -> list[dict[str, Any]]:
+    scored_cases: list[dict[str, Any]] = []
+    for prepared_case in prepared:
+        case = prepared_case["truth"]
+        paper_results: dict[str, dict[str, Any]] = {}
+        for alias, candidate in prepared_case["papers"].items():
+            accepted = True
+            if threshold is not None:
+                accepted = (
+                    candidate["exact_phrase_match"]
+                    if candidate["gate_kind"] == "exact_phrase"
+                    else candidate["max_semantic_similarity"] >= threshold
+                )
+            pages = candidate["pages"] if accepted else []
+            paper_results[alias] = {
+                "paper_id": alias,
+                "status": "matched" if pages else "no_match",
+                "hits": [
+                    {"paper_id": alias, "source_page": page} for page in pages
+                ],
+            }
+        scored = score_case(case, paper_results)
+        for alias, candidate in prepared_case["papers"].items():
+            scored["papers"][alias].update(
+                {
+                    "gate_kind": candidate["gate_kind"],
+                    "exact_phrase_match": candidate["exact_phrase_match"],
+                    "max_semantic_similarity": candidate[
+                        "max_semantic_similarity"
+                    ],
+                }
+            )
+        scored_cases.append(scored)
+    return scored_cases
+
+
+def evaluate_evidence_gate(
+    truth: dict[str, Any],
+    paper_directory: Path,
+    embedding_model: EmbeddingModel | None = None,
+    thresholds: tuple[float, ...] = EVIDENCE_GATE_THRESHOLDS,
+) -> dict[str, Any]:
+    """Evaluate page-level fusion and an explicit evidence admission gate."""
+    paths = check_papers(truth, paper_directory)
+    cached_model = _CachedEmbeddingModel(
+        embedding_model
+        or E5EmbeddingModel(
+            local_files_only=True,
+            revision=EVALUATION_MODEL_REVISION,
+        )
+    )
+    prepared: list[dict[str, Any]] = []
+
+    with TemporaryDirectory(prefix="research-copilot-m8-4c-") as temporary:
+        chunks_by_alias: dict[str, list[dict[str, int | str]]] = {}
+        for alias, path in paths.items():
+            page_data_path = Path(temporary) / f"{alias}.json"
+            import_pdf_to_json(path, page_data_path)
+            pages = load_page_data(page_data_path)["pages"]
+            chunks_by_alias[alias] = chunk_pages(pages)
+
+        limit = int(truth["per_paper_limit"])
+        candidate_pool = max(limit * 8, 20)
+        for case in truth["cases"]:
+            prepared_case: dict[str, Any] = {"truth": case, "papers": {}}
+            short_term = _is_short_term_query(case["query"])
+            query_phrase = _normalized_phrase(case["query"])
+            for alias, chunks in chunks_by_alias.items():
+                semantic = semantic_search_chunks(
+                    case["query"], chunks, cached_model, limit=candidate_pool
+                )
+                hybrid = hybrid_search_chunks(
+                    case["query"], chunks, cached_model, limit=candidate_pool
+                )
+                keyword = search_chunks(
+                    case["query"], chunks, limit=candidate_pool
+                )
+                pages = (
+                    _page_level_rrf(semantic, hybrid, limit)
+                    if keyword
+                    else _top_distinct_pages(hybrid, limit)
+                )
+                normalized_corpus = _normalized_phrase(
+                    " ".join(str(chunk["text"]) for chunk in chunks)
+                )
+                prepared_case["papers"][alias] = {
+                    "pages": pages,
+                    "gate_kind": "exact_phrase" if short_term else "cosine",
+                    "exact_phrase_match": bool(
+                        query_phrase and query_phrase in normalized_corpus
+                    ),
+                    "max_semantic_similarity": max(
+                        (float(result["score"]) for result in semantic),
+                        default=-1.0,
+                    ),
+                }
+            prepared.append(prepared_case)
+
+    natural_positive_scores: list[float] = []
+    natural_negative_scores: list[float] = []
+    for prepared_case in prepared:
+        for alias, candidate in prepared_case["papers"].items():
+            if candidate["gate_kind"] != "cosine":
+                continue
+            expected_pages = prepared_case["truth"]["relevant_pages"][alias]
+            target = (
+                natural_positive_scores if expected_pages else natural_negative_scores
+            )
+            target.append(candidate["max_semantic_similarity"])
+
+    positive_floor = min(natural_positive_scores)
+    negative_ceiling = max(natural_negative_scores)
+    negative_rejecting_threshold = math.nextafter(negative_ceiling, math.inf)
+    scanned_thresholds = sorted(
+        set((*thresholds, positive_floor, negative_rejecting_threshold))
+    )
+    sweep = []
+    for threshold in scanned_thresholds:
+        cases = _score_gate_cases(prepared, threshold)
+        sweep.append(
+            {
+                "threshold": threshold,
+                "metrics": summarize(cases),
+                "cases": cases,
+            }
+        )
+
+    ungated_cases = _score_gate_cases(prepared, None)
+    check_papers(truth, paper_directory)
+    return {
+        "dataset_id": truth["dataset_id"],
+        "embedding_model": DEFAULT_EMBEDDING_MODEL,
+        "embedding_revision": EVALUATION_MODEL_REVISION,
+        "natural_positive_min_similarity": positive_floor,
+        "natural_negative_max_similarity": negative_ceiling,
+        "single_cosine_threshold_separable": positive_floor > negative_ceiling,
+        "ungated_page_fusion": {
+            "metrics": summarize(ungated_cases),
+            "cases": ungated_cases,
+        },
+        "threshold_sweep": sweep,
+    }
+
+
+def _choose_calibration_threshold(
+    prepared: list[dict[str, Any]],
+) -> dict[str, float | bool]:
+    positive_scores: list[float] = []
+    negative_scores: list[float] = []
+    for prepared_case in prepared:
+        if prepared_case["truth"].get("split") != "calibration":
+            continue
+        for alias, candidate in prepared_case["papers"].items():
+            expected_pages = prepared_case["truth"]["relevant_pages"][alias]
+            target = positive_scores if expected_pages else negative_scores
+            target.append(candidate["evidence_sufficiency_score"])
+    if not positive_scores or not negative_scores:
+        raise ValueError("Calibration split requires positive and negative pairs.")
+
+    positive_floor = min(positive_scores)
+    negative_ceiling = max(negative_scores)
+    return {
+        "threshold": positive_floor,
+        "positive_floor": positive_floor,
+        "negative_ceiling": negative_ceiling,
+        "separable": positive_floor > negative_ceiling,
+    }
+
+
+def _score_sufficiency_cases(
+    prepared: list[dict[str, Any]],
+    threshold: float,
+) -> list[dict[str, Any]]:
+    scored_cases: list[dict[str, Any]] = []
+    for prepared_case in prepared:
+        case = prepared_case["truth"]
+        paper_results: dict[str, dict[str, Any]] = {}
+        for alias, candidate in prepared_case["papers"].items():
+            accepted = candidate["evidence_sufficiency_score"] >= threshold
+            pages = candidate["pages"] if accepted else []
+            paper_results[alias] = {
+                "paper_id": alias,
+                "status": "matched" if pages else "no_match",
+                "hits": [
+                    {"paper_id": alias, "source_page": page} for page in pages
+                ],
+            }
+        scored = score_case(case, paper_results)
+        scored["split"] = case["split"]
+        for alias, candidate in prepared_case["papers"].items():
+            scored["papers"][alias]["evidence_sufficiency_score"] = candidate[
+                "evidence_sufficiency_score"
+            ]
+        scored_cases.append(scored)
+    return scored_cases
+
+
+def evaluate_fine_grained_evidence(
+    truth: dict[str, Any],
+    paper_directory: Path,
+    embedding_model: EmbeddingModel | None = None,
+    relevance_model: FineGrainedRelevanceModel | None = None,
+) -> dict[str, Any]:
+    """Calibrate token alignment on old questions and evaluate held-out questions."""
+    paths = check_papers(truth, paper_directory)
+    cached_model = _CachedEmbeddingModel(
+        embedding_model
+        or E5EmbeddingModel(
+            local_files_only=True,
+            revision=EVALUATION_MODEL_REVISION,
+        )
+    )
+    pair_scorer = relevance_model or E5TokenAlignmentModel(
+        local_files_only=True,
+        revision=EVALUATION_MODEL_REVISION,
+    )
+    prepared: list[dict[str, Any]] = []
+
+    with TemporaryDirectory(prefix="research-copilot-m8-4d-") as temporary:
+        chunks_by_alias: dict[str, list[dict[str, int | str]]] = {}
+        for alias, path in paths.items():
+            page_data_path = Path(temporary) / f"{alias}.json"
+            import_pdf_to_json(path, page_data_path)
+            pages = load_page_data(page_data_path)["pages"]
+            chunks_by_alias[alias] = chunk_pages(pages)
+
+        limit = int(truth["per_paper_limit"])
+        candidate_pool = max(limit * 8, 20)
+        for case in truth["cases"]:
+            if case.get("split") not in {"calibration", "held_out"}:
+                raise ValueError(f"{case['id']} 缺少有效的评测 split。")
+            prepared_case: dict[str, Any] = {"truth": case, "papers": {}}
+            for alias, chunks in chunks_by_alias.items():
+                semantic = semantic_search_chunks(
+                    case["query"], chunks, cached_model, limit=candidate_pool
+                )
+                hybrid = hybrid_search_chunks(
+                    case["query"], chunks, cached_model, limit=candidate_pool
+                )
+                keyword = search_chunks(
+                    case["query"], chunks, limit=candidate_pool
+                )
+                pages = (
+                    _page_level_rrf(semantic, hybrid, limit)
+                    if keyword
+                    else _top_distinct_pages(hybrid, limit)
+                )
+                candidate_chunks = [
+                    chunk for chunk in chunks if int(chunk["source_page"]) in pages
+                ]
+                pair_scores = pair_scorer.score_pairs(
+                    case["query"],
+                    [str(chunk["text"]) for chunk in candidate_chunks],
+                )
+                if len(pair_scores) != len(candidate_chunks):
+                    raise ValueError(
+                        "Fine-grained score count must match candidate chunk count."
+                    )
+                prepared_case["papers"][alias] = {
+                    "pages": pages,
+                    "evidence_sufficiency_score": max(pair_scores, default=-1.0),
+                }
+            prepared.append(prepared_case)
+
+    calibration = _choose_calibration_threshold(prepared)
+    threshold = float(calibration["threshold"])
+    scored = _score_sufficiency_cases(prepared, threshold)
+    calibration_cases = [case for case in scored if case["split"] == "calibration"]
+    held_out_cases = [case for case in scored if case["split"] == "held_out"]
+    if not calibration_cases or not held_out_cases:
+        raise ValueError("Evaluation requires calibration and held-out cases.")
+
+    check_papers(truth, paper_directory)
+    return {
+        "dataset_id": truth["dataset_id"],
+        "embedding_model": DEFAULT_EMBEDDING_MODEL,
+        "embedding_revision": EVALUATION_MODEL_REVISION,
+        "signal": "experimental_e5_token_late_interaction",
+        "calibration": {
+            **calibration,
+            "metrics": summarize(calibration_cases),
+            "cases": calibration_cases,
+        },
+        "held_out": {
+            "threshold": threshold,
+            "metrics": summarize(held_out_cases),
+            "cases": held_out_cases,
         },
     }

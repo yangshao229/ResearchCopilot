@@ -1,4 +1,5 @@
 from pathlib import Path
+from hashlib import sha256
 
 from pypdf import PdfWriter
 from research_copilot.pdf_importer import import_pdf_to_json
@@ -19,6 +20,7 @@ def test_import_pdf_to_json_preserves_pages(tmp_path: Path) -> None:
 
     assert page_data == {
         "source_pdf": "paper.pdf",
+        "source_pdf_sha256": sha256(pdf_path.read_bytes()).hexdigest(),
         "pages": [
             {"source_page": 1, "text": ""},
             {"source_page": 2, "text": ""},

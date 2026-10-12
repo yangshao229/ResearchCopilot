@@ -20,6 +20,7 @@ model_cache/
 cache/
 data/raw/
 data/processed/
+data/.research_copilot/
 indexes/
 artifacts/
 

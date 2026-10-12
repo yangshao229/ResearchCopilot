@@ -16,6 +16,11 @@ from research_copilot.conversation_sessions import (
     ConversationSessionStore,
 )
 from research_copilot.document_service import PaperDocumentService
+from research_copilot.evidence_snapshot import (
+    EvidenceSnapshotKey,
+    EvidenceSnapshotStore,
+    EvidenceSnapshotUnavailable,
+)
 from research_copilot.domain import (
     GlossaryEntry,
     LanguagePolicy,
@@ -51,17 +56,30 @@ from research_copilot.paper_library import (
     PaperLibrary,
     PaperSummary,
 )
+from research_copilot.paper_identity import PaperIdentityStore
 from research_copilot.paper_reading_guide import PaperReadingGuide
+from research_copilot.paper_question_router import classify_paper_question
 from research_copilot.page_translation import PageTranslation, PageTranslationService
 from research_copilot.page_quality import PageQuality
 from research_copilot.page_layout import PageLayout, extract_page_layout
-from research_copilot.paper_search_service import PaperSearchService
+from research_copilot.paper_search_service import (
+    EmbeddingModelUnavailableError,
+    PaperSearchService,
+)
 from research_copilot.paper_structure import PaperStructure
 from research_copilot.language_preferences import PaperLanguagePreferenceStore
 from research_copilot.library_organization import (
     LibraryCollection,
     LibraryOrganizationStore,
     PaperOrganization,
+)
+from research_copilot.obsidian_vault import (
+    ObsidianVaultStore,
+    VaultCatalogPreview,
+    VaultDocument,
+    VaultNote,
+    VaultNotePreview,
+    VaultStatus,
 )
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.reading_service import ReadingService
@@ -80,6 +98,10 @@ DEFAULT_PAGE_TRANSLATION_DIRECTORY = PROJECT_ROOT / "artifacts" / "page_translat
 DEFAULT_LIBRARY_ORGANIZATION_DIRECTORY = (
     PROJECT_ROOT / "artifacts" / "library_organization"
 )
+DEFAULT_PAPER_IDENTITY_DIRECTORY = (
+    DEFAULT_PAPER_DIRECTORY.parent / ".research_copilot" / "paper_identities"
+)
+DEFAULT_VAULT_CONFIG_PATH = PROJECT_ROOT / "artifacts" / "obsidian_vault.json"
 
 
 class PaperSearchRequest(BaseModel):
@@ -92,11 +114,14 @@ class PaperSearchRequest(BaseModel):
     task: ReadingTask = "question"
     anchor: ReadingAnchor | None = None
     refresh_translation: bool = False
+    evidence_snapshot: str | None = Field(default=None, max_length=128)
 
     @model_validator(mode="after")
     def translation_requires_selection(self) -> "PaperSearchRequest":
         if self.refresh_translation and self.task != "translate":
             raise ValueError("只有翻译任务可以跳过译文缓存。")
+        if self.evidence_snapshot and self.task != "question":
+            raise ValueError("检索快照只能用于普通论文问答。")
         if self.task == "translate" and (
             self.anchor is None
             or self.anchor.source_page is None
@@ -163,6 +188,10 @@ class ReadingRecordUpdate(BaseModel):
     category: ReadingCategory = "unclassified"
 
 
+class VaultNoteSaveRequest(BaseModel):
+    preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class ConversationSessionCreate(BaseModel):
     title: str = Field(min_length=1, max_length=80)
 
@@ -186,6 +215,10 @@ class LibraryCollectionCreate(BaseModel):
 class PaperOrganizationUpdate(BaseModel):
     collection_ids: list[str] = Field(default_factory=list, max_length=100)
     tags: list[str] = Field(default_factory=list, max_length=20)
+
+
+class VaultConnectionRequest(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
 
 
 class LibrarySearchRequest(BaseModel):
@@ -237,8 +270,22 @@ def create_app(
     glossary_store: PaperGlossaryStore | None = None,
     page_translation_service: PageTranslationService | None = None,
     library_organization_store: LibraryOrganizationStore | None = None,
+    paper_identity_store: PaperIdentityStore | None = None,
+    vault_store: ObsidianVaultStore | None = None,
 ) -> FastAPI:
-    library = PaperLibrary(paper_directory or DEFAULT_PAPER_DIRECTORY)
+    selected_paper_directory = paper_directory or DEFAULT_PAPER_DIRECTORY
+    if history_store is not None:
+        identity_directory = history_store.root_directory.parent / "paper_identities"
+    elif paper_directory is None:
+        identity_directory = DEFAULT_PAPER_IDENTITY_DIRECTORY
+    else:
+        identity_directory = (
+            Path(paper_directory).parent
+            / ".research_copilot"
+            / "paper_identities"
+        )
+    identities = paper_identity_store or PaperIdentityStore(identity_directory)
+    library = PaperLibrary(selected_paper_directory, identities)
     frontend_path = frontend_directory or DEFAULT_FRONTEND_DIRECTORY
     searcher = search_service or PaperSearchService(
         processed_directory or DEFAULT_PROCESSED_DIRECTORY
@@ -280,6 +327,11 @@ def create_app(
     organization = library_organization_store or LibraryOrganizationStore(
         organization_directory
     )
+    vault = vault_store or ObsidianVaultStore(
+        (history.root_directory.parent / "obsidian_vault.json")
+        if history_store is not None else DEFAULT_VAULT_CONFIG_PATH,
+        cards.output_directory,
+    )
     reader = reading_service or ReadingService(
         answerer,
         history,
@@ -287,6 +339,7 @@ def create_app(
         documents,
         glossary,
     )
+    evidence_snapshots = EvidenceSnapshotStore()
 
     app = FastAPI(
         title="ResearchCopilot",
@@ -300,12 +353,116 @@ def create_app(
         ],
         allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE"],
         allow_headers=["*"],
-        expose_headers=["X-Reading-Scope"],
+        expose_headers=["X-Reading-Scope", "X-Evidence-Snapshot"],
     )
 
     @app.get("/api/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    def health() -> dict[str, str | int]:
+        return {"status": "ok", "version": "0.1.0", "api_schema": 2}
+
+    @app.get("/api/knowledge/vault", response_model=VaultStatus)
+    def vault_status() -> VaultStatus:
+        return vault.status()
+
+    @app.post("/api/knowledge/vault", response_model=VaultStatus)
+    def connect_vault(request: VaultConnectionRequest) -> VaultStatus:
+        try:
+            return vault.connect(request.path)
+        except (OSError, ValueError) as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
+
+    @app.delete("/api/knowledge/vault", response_model=VaultStatus)
+    def disconnect_vault() -> VaultStatus:
+        return vault.disconnect()
+
+    @app.get("/api/knowledge/vault/catalog/preview", response_model=VaultCatalogPreview)
+    def preview_vault_catalog() -> VaultCatalogPreview:
+        try:
+            return vault.preview_source_catalog(library.list_papers())
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post("/api/knowledge/vault/catalog", response_model=VaultStatus)
+    def save_vault_catalog(request: VaultNoteSaveRequest) -> VaultStatus:
+        try:
+            return vault.save_source_catalog(library.list_papers(), request.preview_sha256)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    def vault_paper(paper_id: str) -> PaperSummary:
+        paper = next((item for item in library.list_papers() if item.id == paper_id), None)
+        if paper is None:
+            raise HTTPException(status_code=404, detail="Paper not found.")
+        return paper
+
+    def vault_note_inputs(paper_id: str, record_id: str) -> tuple[PaperSummary, ReadingRecord]:
+        paper = vault_paper(paper_id)
+        record = next(
+            (item for item in history.list_records(paper_id) if item.id == record_id),
+            None,
+        )
+        if record is None:
+            raise HTTPException(status_code=404, detail="Reading record not found.")
+        return paper, record
+
+    @app.get(
+        "/api/papers/{paper_id}/history/{record_id}/vault/preview",
+        response_model=VaultNotePreview,
+    )
+    def preview_vault_reading_note(paper_id: str, record_id: str) -> VaultNotePreview:
+        paper, record = vault_note_inputs(paper_id, record_id)
+        try:
+            return vault.preview_reading_note(paper, record)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
+        "/api/papers/{paper_id}/history/{record_id}/vault",
+        response_model=VaultNote,
+    )
+    def save_vault_reading_note(
+        paper_id: str, record_id: str, request: VaultNoteSaveRequest
+    ) -> VaultNote:
+        paper, record = vault_note_inputs(paper_id, record_id)
+        try:
+            return vault.save_reading_note(paper, record, request.preview_sha256)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get(
+        "/api/papers/{paper_id}/vault/card/preview",
+        response_model=VaultNotePreview,
+    )
+    def preview_vault_paper_card(paper_id: str) -> VaultNotePreview:
+        try:
+            return vault.preview_paper_card(vault_paper(paper_id))
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.post(
+        "/api/papers/{paper_id}/vault/card",
+        response_model=VaultNote,
+    )
+    def save_vault_paper_card(paper_id: str, request: VaultNoteSaveRequest) -> VaultNote:
+        try:
+            return vault.save_paper_card(vault_paper(paper_id), request.preview_sha256)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
+
+    @app.get(
+        "/api/papers/{paper_id}/vault/notes/{uid}",
+        response_model=VaultDocument,
+    )
+    def read_vault_document(paper_id: str, uid: str) -> VaultDocument:
+        paper = vault_paper(paper_id)
+        if not paper.paper_uid:
+            raise HTTPException(status_code=409, detail="Paper identity unavailable.")
+        try:
+            return vault.read_document(paper.paper_uid, uid)
+        except KeyError as error:
+            raise HTTPException(status_code=404, detail="Vault note not found.") from error
+        except (OSError, ValueError, TypeError) as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
 
     @app.get("/api/papers", response_model=list[PaperSummary])
     def list_papers() -> list[PaperSummary]:
@@ -723,15 +880,47 @@ def create_app(
             ) from error
 
         context = request.to_reading_context(paper_id)
-        results, scope = reader.search(
-            paper_path,
-            context,
-            limit=request.limit,
+        source_document = (
+            library.source_document(paper_id)
+            if searcher.is_page_data_verified(paper_path, paper_id)
+            else None
         )
+        try:
+            evidence_set, scope = reader.search_evidence(
+                paper_path,
+                context,
+                limit=request.limit,
+                source_document=source_document,
+            )
+        except EmbeddingModelUnavailableError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
+        if source_document is not None and classify_paper_question(request.query) == "content":
+            if (
+                not searcher.is_page_data_verified(paper_path, paper_id)
+                or library.source_document(paper_id) != source_document
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail="PDF 在检索过程中发生变化。请重新检索原文。",
+                )
+            response.headers["X-Evidence-Snapshot"] = evidence_snapshots.issue(
+                EvidenceSnapshotKey(
+                    paper_id=paper_id,
+                    source_document=source_document,
+                    query=request.query,
+                    mode=request.mode,
+                    limit=request.limit,
+                    scope_preference=request.scope_preference,
+                ),
+                evidence_set,
+            )
         response.headers["X-Reading-Scope"] = json.dumps(
             scope.model_dump(), ensure_ascii=True
         )
-        return [SearchHit.model_validate(result) for result in results]
+        return [
+            SearchHit.model_validate(item.model_dump(exclude={"evidence_id"}))
+            for item in evidence_set.candidates
+        ]
 
     @app.post(
         "/api/papers/{paper_id}/selection-context",
@@ -776,12 +965,38 @@ def create_app(
             ) from error
 
         try:
+            source_document = (
+                library.source_document(paper_id)
+                if searcher.is_page_data_verified(paper_path, paper_id)
+                else None
+            )
+            evidence_set = None
+            if request.evidence_snapshot is not None:
+                if source_document is None:
+                    raise EvidenceSnapshotUnavailable(
+                        "当前 PDF 版本无法核验。请重新检索原文后再生成回答。"
+                    )
+                evidence_set = evidence_snapshots.resolve(
+                    request.evidence_snapshot,
+                    EvidenceSnapshotKey(
+                        paper_id=paper_id,
+                        source_document=source_document,
+                        query=request.query,
+                        mode=request.mode,
+                        limit=request.limit,
+                        scope_preference=request.scope_preference,
+                    ),
+                )
             return reader.answer(
                 paper_path,
                 paper_path.name,
                 request.to_reading_context(paper_id),
                 limit=request.limit,
+                source_document=source_document,
+                evidence_set=evidence_set,
             )
+        except EvidenceSnapshotUnavailable as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
         except KeyError as error:
             raise HTTPException(
                 status_code=404,
@@ -795,6 +1010,8 @@ def create_app(
                     "DEEPSEEK_API_KEY。"
                 ),
             ) from error
+        except EmbeddingModelUnavailableError as error:
+            raise HTTPException(status_code=503, detail=str(error)) from error
         except AnswerGenerationError as error:
             raise HTTPException(
                 status_code=502,
@@ -913,7 +1130,8 @@ def create_app(
             return {
                 "message": (
                     "Frontend is not built yet. "
-                    "Run `npm install` and `npm run build` in web/."
+                    "Run `npm --prefix web ci` and "
+                    "`npm --prefix web run build` from the project root."
                 )
             }
 

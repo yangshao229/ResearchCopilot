@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   exportReadingRecordUrl,
+  getVaultDocument,
+  getVaultStatus,
+  previewVaultReadingNote,
+  saveVaultReadingNote,
   type Paper,
-  type PaperCardPreview,
   type PaperStructure,
   type ReadingScope,
   type ReadingCategory,
   type ReadingRecord,
+  type VaultNotePreview,
+  type VaultDocument,
+  type VaultNote,
   type SearchMode,
+  type ScopePreference,
   type SearchResult,
   updateReadingRecord,
 } from "../../api";
@@ -35,6 +42,8 @@ export type CompletedSearch = {
   query: string;
   mode: SearchMode;
   scope: ReadingScope;
+  scopePreference: ScopePreference;
+  snapshotToken: string | null;
 };
 
 type HistoryCardProps = {
@@ -55,6 +64,11 @@ export function HistoryCard({
   const [category, setCategory] = useState<ReadingCategory>(record.category);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [vaultPreview, setVaultPreview] = useState<VaultNotePreview | null>(null);
+  const [vaultError, setVaultError] = useState<string | null>(null);
+  const [vaultSavedPath, setVaultSavedPath] = useState<string | null>(null);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const hasUnsavedChanges = note !== record.personal_note || category !== record.category;
 
   const save = async (confirmed: boolean) => {
     if (confirmed && !note.trim()) {
@@ -68,6 +82,8 @@ export function HistoryCard({
 
     setIsSaving(true);
     setSaveError(null);
+    setVaultPreview(null);
+    setVaultSavedPath(null);
     try {
       onSaved(
         await updateReadingRecord(
@@ -82,6 +98,36 @@ export function HistoryCard({
       setSaveError(errorMessage(reason, "history.errorSave"));
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const prepareVaultNote = async () => {
+    setVaultBusy(true);
+    setVaultError(null);
+    setVaultPreview(null);
+    try {
+      setVaultPreview(await previewVaultReadingNote(paperId, record.id));
+    } catch (reason: unknown) {
+      setVaultError(errorMessage(reason, "history.vaultPreviewError"));
+    } finally {
+      setVaultBusy(false);
+    }
+  };
+
+  const saveVaultNote = async () => {
+    if (!vaultPreview || hasUnsavedChanges) return;
+    setVaultBusy(true);
+    setVaultError(null);
+    try {
+      const saved = await saveVaultReadingNote(paperId, record.id, vaultPreview.sha256);
+      setVaultSavedPath(saved.path);
+      setVaultPreview(null);
+      window.dispatchEvent(new Event("research-copilot:vault-changed"));
+    } catch (reason: unknown) {
+      setVaultError(errorMessage(reason, "history.vaultSaveError"));
+      setVaultPreview(null);
+    } finally {
+      setVaultBusy(false);
     }
   };
 
@@ -154,6 +200,39 @@ export function HistoryCard({
           </button>
         )}
       </div>
+      {record.confirmed && (
+        <section className="paper-card-preview">
+          <strong>{t("history.vaultTitle")}</strong>
+          <p className="muted">{t("history.vaultHelp")}</p>
+          {hasUnsavedChanges && <p className="muted">{t("history.vaultSaveDraftFirst")}</p>}
+          <button
+            type="button"
+            disabled={vaultBusy || isSaving || hasUnsavedChanges}
+            onClick={() => void prepareVaultNote()}
+          >
+            {vaultBusy ? t("history.vaultWorking") : t("history.vaultPreview")}
+          </button>
+          {vaultError && <p className="search-error">{vaultError}</p>}
+          {vaultSavedPath && <p>{t("history.vaultSaved", { path: vaultSavedPath })}</p>}
+          {vaultPreview && (
+            <div className="card-diff">
+              <p>{t("history.vaultTarget", { path: vaultPreview.relative_path })}</p>
+              <pre>{vaultPreview.markdown}</pre>
+              {vaultPreview.already_exists ? (
+                <p>{t("history.vaultAlreadyExists")}</p>
+              ) : (
+                <button
+                  type="button"
+                  disabled={vaultBusy || hasUnsavedChanges}
+                  onClick={() => void saveVaultNote()}
+                >
+                  {t("history.vaultConfirmSave")}
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+      )}
     </article>
   );
 }
@@ -269,6 +348,11 @@ export function EvidenceView({
           <p className="outline-warning" role="status">
             {scopeStatus(completedSearch.scope, language, t)}
           </p>
+          {!completedSearch.snapshotToken && (
+            <p className="outline-warning" role="status">
+              {t("evidence.unverifiedSnapshot")}
+            </p>
+          )}
           {results.length > 0 ? (
             <ol className="evidence-list">
               {results.map((result, index) => (
@@ -318,25 +402,87 @@ export function EvidenceView({
 }
 
 type SummaryViewProps = {
+  paper: Paper;
   confirmedRecordCount: number;
-  cardPreview: PaperCardPreview | null;
+  cardPreview: VaultNotePreview | null;
   cardError: string | null;
+  cardSavedPath: string | null;
   isPreparingCard: boolean;
-  isExportingCard: boolean;
+  isSavingCard: boolean;
   onPrepare: () => void;
-  onExport: () => void;
+  onSave: () => void;
 };
 
 export function SummaryView({
+  paper,
   confirmedRecordCount,
   cardPreview,
   cardError,
+  cardSavedPath,
   isPreparingCard,
-  isExportingCard,
+  isSavingCard,
   onPrepare,
-  onExport,
+  onSave,
 }: SummaryViewProps) {
-  const { t } = useI18n();
+  const { t, errorMessage } = useI18n();
+  const [savedNotes, setSavedNotes] = useState<VaultNote[]>([]);
+  const [vaultConnected, setVaultConnected] = useState(false);
+  const [selectedDocument, setSelectedDocument] = useState<VaultDocument | null>(null);
+  const [readError, setReadError] = useState<string | null>(null);
+  const [isReading, setIsReading] = useState(false);
+  const requestId = useRef(0);
+
+  useEffect(() => {
+    const refresh = () => {
+      const currentRequest = ++requestId.current;
+      setSelectedDocument(null);
+      setReadError(null);
+      setIsReading(false);
+      void getVaultStatus().then((status) => {
+        if (currentRequest !== requestId.current) return;
+        setVaultConnected(status.connected);
+        setSavedNotes(status.notes.filter((note) => note.paper_uid === paper.paper_uid));
+      }).catch((reason: unknown) => {
+        if (currentRequest === requestId.current) setReadError(errorMessage(reason, "vault.loadError"));
+      });
+    };
+    refresh();
+    window.addEventListener("research-copilot:vault-changed", refresh);
+    return () => {
+      requestId.current += 1;
+      window.removeEventListener("research-copilot:vault-changed", refresh);
+    };
+  }, [paper.id, paper.paper_uid]);
+
+  const readSavedNote = async (uid: string) => {
+    const currentRequest = ++requestId.current;
+    setSelectedDocument(null);
+    setReadError(null);
+    setIsReading(true);
+    try {
+      const document = await getVaultDocument(paper.id, uid);
+      if (currentRequest === requestId.current) setSelectedDocument(document);
+    } catch (reason: unknown) {
+      if (currentRequest === requestId.current) setReadError(errorMessage(reason, "summary.readError"));
+    } finally {
+      if (currentRequest === requestId.current) setIsReading(false);
+    }
+  };
+
+  const refreshSavedNotes = async () => {
+    const currentRequest = ++requestId.current;
+    setSelectedDocument(null);
+    setReadError(null);
+    setIsReading(false);
+    try {
+      const status = await getVaultStatus();
+      if (currentRequest !== requestId.current) return;
+      setVaultConnected(status.connected);
+      setSavedNotes(status.notes.filter((note) => note.paper_uid === paper.paper_uid));
+    } catch (reason: unknown) {
+      if (currentRequest === requestId.current) setReadError(errorMessage(reason, "vault.loadError"));
+    }
+  };
   return (
     <div className="assistant-content summary-content">
       <p className="eyebrow">{t("summary.eyebrow")}</p>
@@ -344,45 +490,39 @@ export function SummaryView({
       <p className="assistant-intro">
         {t("summary.intro", { count: confirmedRecordCount })}
       </p>
+      {paper.pdf_version_status === "changed" && (
+        <p className="search-error">{t("summary.changedPdf")}</p>
+      )}
       <button
         type="button"
         className="prepare-card-button"
-        disabled={confirmedRecordCount < 2 || isPreparingCard}
+        disabled={isPreparingCard || isSavingCard}
         onClick={onPrepare}
       >
         {isPreparingCard ? t("summary.preparing") : t("summary.prepare")}
       </button>
       {cardError && <p className="search-error">{cardError}</p>}
+      {cardSavedPath && <p>{t("summary.saved", { path: cardSavedPath })}</p>}
       {cardPreview ? (
         <section className="paper-card-preview">
           <div className="card-preview-heading">
             <strong>{t("summary.markdownPreview")}</strong>
-            <span>{t("summary.confirmedCount", { count: cardPreview.confirmed_record_count })}</span>
+            <span>{t("summary.target", { path: cardPreview.relative_path })}</span>
           </div>
           <pre>{cardPreview.markdown}</pre>
-          {cardPreview.existing_card && (
-            <div className="card-diff">
-              <strong>{t("summary.diff")}</strong>
-              <pre>{cardPreview.diff || t("summary.noChanges")}</pre>
-            </div>
+          {cardPreview.already_exists ? (
+            <p className="card-safety-note">{t("summary.alreadyExists")}</p>
+          ) : (
+            <button
+              type="button"
+              className="export-card-button"
+              disabled={isSavingCard}
+              onClick={onSave}
+            >
+              {isSavingCard ? t("summary.saving") : t("summary.save")}
+            </button>
           )}
-          <button
-            type="button"
-            className="export-card-button"
-            disabled={isExportingCard}
-            onClick={onExport}
-          >
-            {isExportingCard
-              ? t("summary.exporting")
-              : cardPreview.existing_card
-                ? t("summary.exportVersion")
-                : t("summary.exportCard")}
-          </button>
-          <p className="card-safety-note">
-            {cardPreview.existing_card
-              ? t("summary.versionSafety")
-              : t("summary.firstExportSafety")}
-          </p>
+          <p className="card-safety-note">{t("summary.safety")}</p>
         </section>
       ) : (
         <div className="empty-conversation">
@@ -390,6 +530,44 @@ export function SummaryView({
           <p>{t("summary.emptyBody")}</p>
         </div>
       )}
+      <section className="vault-readback">
+        <div className="card-preview-heading">
+          <strong>{t("summary.savedKnowledge")}</strong>
+          <button type="button" onClick={() => void refreshSavedNotes()}>
+            {t("summary.reload")}
+          </button>
+        </div>
+        {!vaultConnected ? (
+          <p className="muted">{t("summary.notConnected")}</p>
+        ) : savedNotes.length === 0 ? (
+          <p className="muted">{t("summary.noSavedNotes")}</p>
+        ) : (
+          <ul className="vault-notes">
+            {savedNotes.map((note) => (
+              <li key={note.uid}>
+                <button
+                  type="button"
+                  disabled={isReading}
+                  onClick={() => void readSavedNote(note.uid)}
+                >
+                  {note.kind === "paper" ? t("summary.paperCard") : t("summary.readingNote")}: {note.title}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {isReading && <p className="muted">{t("summary.loadingNote")}</p>}
+        {readError && <p className="search-error">{readError}</p>}
+        {selectedDocument && (
+          <div className="paper-card-preview">
+            <p className="muted">{t("summary.readOnly", {
+              path: selectedDocument.note.path,
+              digest: selectedDocument.sha256.slice(0, 12),
+            })}</p>
+            <pre>{selectedDocument.markdown}</pre>
+          </div>
+        )}
+      </section>
     </div>
   );
 }

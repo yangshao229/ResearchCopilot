@@ -1,0 +1,39 @@
+name: 阅读体验反馈
+description: 告诉我们哪一步让你难以读懂或整理论文
+title: "[体验] "
+body:
+  - type: markdown
+    attributes:
+      value: "不需要上传论文全文或个人笔记；请用任务和操作流程描述问题。"
+  - type: textarea
+    id: goal
+    attributes:
+      label: 你当时想完成什么阅读任务？
+      description: 例如找到方法章节、翻译一段公式旁的文字、核对引用、保存自己的理解
+    validations:
+      required: true
+  - type: textarea
+    id: friction
+    attributes:
+      label: 在哪一步卡住或觉得不顺手？
+    validations:
+      required: true
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 你最后怎么完成的？希望怎样变化？
+    validations:
+      required: false
+  - type: input
+    id: environment
+    attributes:
+      label: 系统和浏览器
+    validations:
+      required: false
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私检查
+      options:
+        - label: 我已移除密钥、私人论文正文、Vault 笔记及个人路径
+          required: true

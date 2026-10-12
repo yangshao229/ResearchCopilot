@@ -57,6 +57,13 @@ export default function PdfReader({
       return;
     }
 
+    const updateWidth = () => setStageWidth(stage.clientWidth);
+    updateWidth();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateWidth);
+      return () => window.removeEventListener("resize", updateWidth);
+    }
+
     const resizeObserver = new ResizeObserver(([entry]) => {
       setStageWidth(entry.contentRect.width);
     });

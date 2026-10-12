@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from pathlib import Path
 from threading import RLock
 from typing import Any, Protocol
@@ -169,6 +170,19 @@ class DeepSeekPageTranslationModel:
             translation = _TranslationDraft.model_validate_json(output).translated_text.strip()
             if not translation:
                 raise AnswerGenerationError("DeepSeek returned an empty translation.")
+            if policy.translation_target == "zh-CN":
+                english_source_words = len(re.findall(r"[A-Za-z]{3,}", source_text))
+                english_output_words = len(re.findall(r"[A-Za-z]{3,}", translation))
+                chinese_output_chars = sum("\u4e00" <= char <= "\u9fff" for char in translation)
+                if (
+                    english_source_words >= 80
+                    and english_output_words >= 80
+                    and chinese_output_chars < 20
+                ):
+                    raise AnswerGenerationError(
+                        "DeepSeek 返回的整页内容仍主要是英文，未保存为中文译文；"
+                        "请重试，或划选较短段落翻译。"
+                    )
             return translation
         except (ModelNotConfiguredError, AnswerGenerationError):
             raise

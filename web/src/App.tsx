@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  EXPECTED_API_SCHEMA,
   createLibraryCollection,
   collectResearchEvidence,
   deleteLibraryCollection,
+  getApiHealth,
   importPaper,
   listLibraryCollections,
   listPapers,
@@ -18,6 +20,7 @@ import {
 } from "./api";
 import AssistantPanel from "./components/AssistantPanel";
 import PdfReader, { type FocusedSourceRegion, type PdfSelection } from "./components/PdfReader";
+import VaultPanel from "./components/VaultPanel";
 import { useI18n, type UiLanguage } from "./i18n-context";
 
 
@@ -74,6 +77,9 @@ export default function App() {
   const [focusedSourceRegion, setFocusedSourceRegion] = useState<FocusedSourceRegion | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [collectionError, setCollectionError] = useState<string | null>(null);
+  const [compatibilityWarning, setCompatibilityWarning] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [isImporting, setIsImporting] = useState(false);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(
@@ -84,10 +90,29 @@ export default function App() {
   );
 
   useEffect(() => {
-    Promise.all([listPapers(), listLibraryCollections()])
-      .then(([loadedPapers, loadedCollections]) => {
+    setIsLoading(true);
+    setError(null);
+    setCollectionError(null);
+    setCompatibilityWarning(null);
+    Promise.allSettled([getApiHealth(), listPapers(), listLibraryCollections()])
+      .then(([healthResult, paperResult, collectionResult]) => {
+        if (
+          healthResult.status === "rejected" ||
+          healthResult.value.api_schema !== EXPECTED_API_SCHEMA
+        ) {
+          setCompatibilityWarning(t("app.compatibilityWarning"));
+        }
+        if (paperResult.status === "rejected") {
+          setError(errorMessage(paperResult.reason, "app.errorPaperList"));
+          return;
+        }
+        const loadedPapers = paperResult.value;
         setPapers(loadedPapers);
-        setCollections(loadedCollections);
+        if (collectionResult.status === "fulfilled") {
+          setCollections(collectionResult.value);
+        } else {
+          setCollectionError(t("app.errorCollectionList"));
+        }
         setResearchPaperIds((current) =>
           current.filter((paperId) => loadedPapers.some((paper) => paper.id === paperId)),
         );
@@ -97,11 +122,8 @@ export default function App() {
         );
         setSelectedPaperId(selectedPaper?.id ?? loadedPapers[0]?.id ?? null);
       })
-      .catch((reason: unknown) => {
-        setError(errorMessage(reason, "app.errorPaperList"));
-      })
       .finally(() => setIsLoading(false));
-  }, []);
+  }, [loadAttempt]);
 
   useEffect(() => {
     if (selectedPaperId) {
@@ -392,6 +414,16 @@ export default function App() {
             {isImporting ? t("app.importing") : t("app.importPdf")}
           </label>
           {importMessage && <p className="import-message">{importMessage}</p>}
+          {compatibilityWarning && (
+            <div className="compatibility-warning panel-message">
+              <p>{compatibilityWarning}</p>
+              <button type="button" onClick={() => setLoadAttempt((value) => value + 1)}>
+                {t("app.retryConnection")}
+              </button>
+            </div>
+          )}
+          {collectionError && <p className="error panel-message">{collectionError}</p>}
+          <VaultPanel />
 
           {papers.length > 0 && (
             <section className="library-search" aria-label={t("app.librarySearchAria")}>
@@ -759,10 +791,40 @@ export default function App() {
               />
             )}
           </>
+        ) : isLoading ? (
+          <section className="welcome-state">
+            <h2>{t("app.scanning")}</h2>
+          </section>
+        ) : error ? (
+          <section className="welcome-state startup-recovery">
+            <h2>{t("app.serverUnavailableTitle")}</h2>
+            <p>{t("app.serverUnavailableBody")}</p>
+            <button type="button" onClick={() => setLoadAttempt((value) => value + 1)}>
+              {t("app.retryConnection")}
+            </button>
+          </section>
         ) : (
           <section className="welcome-state">
             <h2>{t("app.welcomeTitle")}</h2>
             <p>{t("app.welcomeBody")}</p>
+            <ol className="welcome-steps">
+              <li>{t("app.welcomeStepImport")}</li>
+              <li>{t("app.welcomeStepRead")}</li>
+              <li>{t("app.welcomeStepVerify")}</li>
+              <li>{t("app.welcomeStepSave")}</li>
+            </ol>
+            <label className="import-paper-button welcome-import-button">
+              <input
+                type="file"
+                accept="application/pdf,.pdf"
+                disabled={isImporting}
+                onChange={(event) => {
+                  void handlePdfImport(event.target.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+              />
+              {isImporting ? t("app.importing") : t("app.importFirstPdf")}
+            </label>
           </section>
         )}
       </div>

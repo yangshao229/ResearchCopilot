@@ -1,0 +1,61 @@
+{
+  "dataset_id": "m8.4l-three-paper-support-spans-v1",
+  "parent_dataset_id": "m8.4h-locked-model-comparison-v1",
+  "paper_sha256_by_alias": {
+    "lora": "e9a0d3128767db616085dc0f4e6e455e672e89af823e8ed1282793682787395a",
+    "transformer": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+    "bert": "987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4"
+  },
+  "support_markers": {
+    "lora_latency_en": [
+      "explicitly compute and store W = W0 +BA",
+      "perform inference as usual"
+    ],
+    "lora_latency_zh": [
+      "explicitly compute and store W = W0 +BA",
+      "perform inference as usual"
+    ],
+    "lora_attention_weights_en": [
+      "# of Trainable Parameters = 18M",
+      "Adapting bothWq and Wv gives the best performance overall"
+    ],
+    "lora_attention_weights_zh": [
+      "# of Trainable Parameters = 18M",
+      "Adapting bothWq and Wv gives the best performance overall"
+    ],
+    "transformer_scaling_en": [
+      "dot products grow large in magnitude",
+      "extremely small gradients",
+      "we scale the dot products by"
+    ],
+    "transformer_scaling_zh": [
+      "dot products grow large in magnitude",
+      "extremely small gradients",
+      "we scale the dot products by"
+    ],
+    "transformer_heads_en": [
+      "h = 8 parallel attention layers",
+      "dmodel/h = 64"
+    ],
+    "transformer_heads_zh": [
+      "h = 8 parallel attention layers",
+      "dmodel/h = 64"
+    ],
+    "bert_input_embeddings_en": [
+      "input embeddings are the sum of the token embeddings",
+      "tion embeddings and the position embeddings"
+    ],
+    "bert_input_embeddings_zh": [
+      "input embeddings are the sum of the token embeddings",
+      "tion embeddings and the position embeddings"
+    ],
+    "bert_pretraining_corpora_en": [
+      "BooksCorpus (800M words)",
+      "English Wikipedia (2,500M words)"
+    ],
+    "bert_pretraining_corpora_zh": [
+      "BooksCorpus (800M words)",
+      "English Wikipedia (2,500M words)"
+    ]
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "selection_id": "m8.4r-human-answer-audit-v1",
+  "search_mode": "hybrid",
+  "evidence_limit": 5,
+  "datasets": [
+    {
+      "path": "docs/evaluations/m8_4m_answer_bearing_rerank_truth.json",
+      "case_ids": [
+        "lora_latency_en",
+        "lora_no_answer_zh",
+        "transformer_heads_zh",
+        "transformer_no_answer_en",
+        "bert_input_embeddings_en",
+        "bert_no_answer_zh"
+      ]
+    },
+    {
+      "path": "docs/evaluations/m8_4n_independent_answer_bearing_rerank_truth.json",
+      "case_ids": [
+        "rag_memory_zh",
+        "rag_no_answer_en"
+      ]
+    }
+  ]
+}

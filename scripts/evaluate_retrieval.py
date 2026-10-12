@@ -38,7 +38,7 @@ def load_questions(path: Path) -> list[dict[str, Any]]:
 
 def main() -> None:
     args = build_parser().parse_args()
-    model = E5EmbeddingModel()
+    model = E5EmbeddingModel(local_files_only=True)
     strategies: dict[str, SearchFunction] = {
         "keyword": lambda query: search_page_data(
             args.page_data_path,

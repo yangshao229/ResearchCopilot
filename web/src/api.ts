@@ -1,11 +1,22 @@
 export type Paper = {
   id: string;
+  paper_uid?: string | null;
+  pdf_sha256?: string | null;
+  pdf_version_status?: "current" | "changed" | null;
   name: string;
   relative_path: string;
   page_count: number | null;
   detected_source_language: "en" | "zh-CN" | "mixed" | "unknown";
   collection_ids: string[];
   tags: string[];
+};
+
+export const EXPECTED_API_SCHEMA = 2;
+
+export type ApiHealth = {
+  status: string;
+  version?: string;
+  api_schema?: number;
 };
 
 export type LibraryCollection = {
@@ -17,6 +28,36 @@ export type LibraryCollection = {
 export type PaperOrganization = {
   collection_ids: string[];
   tags: string[];
+};
+
+export type VaultStatus = {
+  connected: boolean;
+  path: string | null;
+  notes: { path: string; kind: string; uid: string; title: string; paper_uid: string | null }[];
+  issues: { path: string; message: string }[];
+  legacy_card_count: number;
+};
+
+export type VaultNotePreview = {
+  relative_path: string;
+  markdown: string;
+  sha256: string;
+  already_exists: boolean;
+};
+
+export type VaultNote = VaultStatus["notes"][number];
+
+export type VaultCatalogPreview = {
+  new_sources: string[];
+  existing_count: number;
+  base_will_create: boolean;
+  sha256: string;
+};
+
+export type VaultDocument = {
+  note: VaultNote;
+  markdown: string;
+  sha256: string;
 };
 
 export type LibrarySearchHit = {
@@ -146,6 +187,12 @@ export type ReadingCategory =
   | "limitations"
   | "open_questions";
 
+export type SourceAnchor = {
+  paper_uid: string;
+  pdf_sha256: string;
+  source_page: number;
+};
+
 export type SearchResult = {
   source_page: number;
   chunk_index: number;
@@ -158,6 +205,7 @@ export type SearchResult = {
   fusion_score: number;
   reference_penalty: number;
   rerank_score: number;
+  source: SourceAnchor | null;
 };
 
 export type Evidence = SearchResult & {
@@ -168,6 +216,7 @@ export type AnswerCitation = {
   evidence_id: number;
   source_page: number;
   quote: string;
+  source: SourceAnchor | null;
 };
 
 export type PaperAnswer = {
@@ -274,6 +323,7 @@ export type ReadingRecord = {
 export type PaperSearchExecution = {
   results: SearchResult[];
   scope: ReadingScope;
+  snapshotToken: string | null;
 };
 
 export type PaperCardPreview = {
@@ -331,13 +381,101 @@ function jsonOptions(method: string, body: unknown): RequestInit {
 }
 
 export async function listPapers(): Promise<Paper[]> {
-  return requestJson<Paper[]>("/api/papers", "论文列表加载失败");
+  const papers = await requestJson<Paper[]>("/api/papers", "论文列表加载失败");
+  return papers.map((paper) => ({
+    ...paper,
+    collection_ids: paper.collection_ids ?? [],
+    tags: paper.tags ?? [],
+  }));
+}
+
+export async function getApiHealth(): Promise<ApiHealth> {
+  return requestJson<ApiHealth>("/api/health", "本地服务状态检查失败");
 }
 
 export async function listLibraryCollections(): Promise<LibraryCollection[]> {
   return requestJson<LibraryCollection[]>(
     "/api/library/collections",
     "论文集合加载失败",
+  );
+}
+
+export async function getVaultStatus(): Promise<VaultStatus> {
+  return requestJson<VaultStatus>("/api/knowledge/vault", "Vault 状态加载失败");
+}
+
+export async function connectVault(path: string): Promise<VaultStatus> {
+  return requestJson<VaultStatus>(
+    "/api/knowledge/vault", "Vault 连接失败", jsonOptions("POST", { path }),
+  );
+}
+
+export async function disconnectVault(): Promise<VaultStatus> {
+  return requestJson<VaultStatus>(
+    "/api/knowledge/vault", "Vault 断开失败", { method: "DELETE" },
+  );
+}
+
+export async function previewVaultCatalog(): Promise<VaultCatalogPreview> {
+  return requestJson<VaultCatalogPreview>(
+    "/api/knowledge/vault/catalog/preview", "论文目录预览失败",
+  );
+}
+
+export async function saveVaultCatalog(previewSha256: string): Promise<VaultStatus> {
+  return requestJson<VaultStatus>(
+    "/api/knowledge/vault/catalog", "论文目录入库失败",
+    jsonOptions("POST", { preview_sha256: previewSha256 }),
+  );
+}
+
+export async function previewVaultReadingNote(
+  paperId: string,
+  recordId: string,
+): Promise<VaultNotePreview> {
+  return requestJson<VaultNotePreview>(
+    `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}/vault/preview`,
+    "Obsidian 笔记预览失败",
+  );
+}
+
+export async function saveVaultReadingNote(
+  paperId: string,
+  recordId: string,
+  previewSha256: string,
+): Promise<VaultNote> {
+  return requestJson<VaultNote>(
+    `/api/papers/${encodeURIComponent(paperId)}/history/${encodeURIComponent(recordId)}/vault`,
+    "Obsidian 笔记保存失败",
+    jsonOptions("POST", { preview_sha256: previewSha256 }),
+  );
+}
+
+export async function previewVaultPaperCard(paperId: string): Promise<VaultNotePreview> {
+  return requestJson<VaultNotePreview>(
+    `/api/papers/${encodeURIComponent(paperId)}/vault/card/preview`,
+    "正式论文卡预览失败",
+  );
+}
+
+export async function saveVaultPaperCard(
+  paperId: string,
+  previewSha256: string,
+): Promise<VaultNote> {
+  return requestJson<VaultNote>(
+    `/api/papers/${encodeURIComponent(paperId)}/vault/card`,
+    "正式论文卡保存失败",
+    jsonOptions("POST", { preview_sha256: previewSha256 }),
+  );
+}
+
+export async function getVaultDocument(
+  paperId: string,
+  uid: string,
+): Promise<VaultDocument> {
+  return requestJson<VaultDocument>(
+    `/api/papers/${encodeURIComponent(paperId)}/vault/notes/${encodeURIComponent(uid)}`,
+    "Obsidian 笔记读取失败",
   );
 }
 
@@ -577,6 +715,7 @@ export async function searchPaper(
   return {
     results: (await response.json()) as SearchResult[],
     scope,
+    snapshotToken: response.headers.get("X-Evidence-Snapshot"),
   };
 }
 
@@ -591,6 +730,7 @@ export async function answerPaper(
   task: ReadingTask = "question",
   anchor?: ReadingAnchor,
   refreshTranslation = false,
+  evidenceSnapshot?: string,
 ): Promise<PaperAnswer> {
   return requestJson<PaperAnswer>(
     `/api/papers/${encodeURIComponent(paperId)}/answer`,
@@ -605,6 +745,7 @@ export async function answerPaper(
       ...(anchor ? { anchor } : {}),
       ...(refreshTranslation ? { refresh_translation: true } : {}),
       ...(language ? { language } : {}),
+      ...(evidenceSnapshot ? { evidence_snapshot: evidenceSnapshot } : {}),
     }),
   );
 }

@@ -1,0 +1,95 @@
+{
+  "dataset_id": "m8.4g-matched-language-diagnostic-v1",
+  "page_numbering": "one_based_pdf_page_index",
+  "papers": {
+    "lora": {
+      "filename": "lora-hu-2021-v2.pdf",
+      "sha256": "e9a0d3128767db616085dc0f4e6e455e672e89af823e8ed1282793682787395a",
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models"
+    },
+    "transformer": {
+      "filename": "sample.pdf",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "title": "Attention Is All You Need"
+    },
+    "bert": {
+      "filename": "bert-naacl-2019.pdf",
+      "sha256": "987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+    }
+  },
+  "cases": [
+    {
+      "id": "lora_low_rank_en",
+      "paper": "lora",
+      "language": "en",
+      "query": "Which two low-rank matrices does LoRA train?",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_low_rank_zh",
+      "paper": "lora",
+      "language": "zh",
+      "query": "LoRA 训练的是哪两个低秩矩阵？",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_position_en",
+      "paper": "transformer",
+      "language": "en",
+      "query": "How does the Transformer encode token positions?",
+      "anchor_pages": [6],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_position_zh",
+      "paper": "transformer",
+      "language": "zh",
+      "query": "Transformer 如何编码词元的位置？",
+      "anchor_pages": [6],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_masked_lm_en",
+      "paper": "bert",
+      "language": "en",
+      "query": "How does BERT select tokens for its masked language model?",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_masked_lm_zh",
+      "paper": "bert",
+      "language": "zh",
+      "query": "BERT 的遮盖语言模型如何选择被遮盖的词？",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_no_answer_zh",
+      "paper": "lora",
+      "language": "zh",
+      "query": "LoRA 报告的量子纠缠保真度是多少？",
+      "anchor_pages": [],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_no_answer_zh",
+      "paper": "transformer",
+      "language": "zh",
+      "query": "Transformer 报告的量子纠缠保真度是多少？",
+      "anchor_pages": [],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_no_answer_zh",
+      "paper": "bert",
+      "language": "zh",
+      "query": "BERT 报告的 ImageNet 图像分类准确率是多少？",
+      "anchor_pages": [],
+      "known_irrelevant_pages": [10]
+    }
+  ]
+}

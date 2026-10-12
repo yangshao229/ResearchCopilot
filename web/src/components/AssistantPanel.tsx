@@ -3,23 +3,23 @@ import { useEffect, useState } from "react";
 import {
   answerPaper,
   createConversationSession,
-  downloadPaperCard,
   getPaperLanguagePreferences,
   getPaperReadingGuide,
   getPaperStructure,
   listConversationSessions,
   listReadingHistory,
   previewSelectionContext,
-  previewPaperCard,
+  previewVaultPaperCard,
   searchPaper,
   savePaperLanguagePreferences,
+  saveVaultPaperCard,
   type ConversationSession,
   type Paper,
   type PageLayout,
   type PageSourceRegion,
   type LanguagePolicy,
   type PaperAnswer,
-  type PaperCardPreview,
+  type VaultNotePreview,
   type PaperReadingGuide,
   type PaperStructure,
   type ReadingRecord,
@@ -114,10 +114,11 @@ export default function AssistantPanel({
   const [isCreatingSession, setIsCreatingSession] = useState(false);
   const [guide, setGuide] = useState<PaperReadingGuide | null>(null);
   const [guideError, setGuideError] = useState<string | null>(null);
-  const [cardPreview, setCardPreview] = useState<PaperCardPreview | null>(null);
+  const [cardPreview, setCardPreview] = useState<VaultNotePreview | null>(null);
   const [cardError, setCardError] = useState<string | null>(null);
+  const [cardSavedPath, setCardSavedPath] = useState<string | null>(null);
   const [isPreparingCard, setIsPreparingCard] = useState(false);
-  const [isExportingCard, setIsExportingCard] = useState(false);
+  const [isSavingCard, setIsSavingCard] = useState(false);
   const [structure, setStructure] = useState<PaperStructure | null>(null);
   const [structureError, setStructureError] = useState<string | null>(null);
   const [isLoadingStructure, setIsLoadingStructure] = useState(true);
@@ -161,6 +162,9 @@ export default function AssistantPanel({
     setHistoryError(null);
     setSessionError(null);
     setGuideError(null);
+    setCardPreview(null);
+    setCardSavedPath(null);
+    setCardError(null);
 
     listReadingHistory(paper.id)
       .then((records) => {
@@ -230,6 +234,11 @@ export default function AssistantPanel({
       isCurrent = false;
     };
   }, [paper.id, activeSessionId]);
+
+  useEffect(() => {
+    setCompletedSearch(null);
+    setResults([]);
+  }, [question, searchMode, scopePreference]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -322,9 +331,11 @@ export default function AssistantPanel({
 
   const prepareCard = async () => {
     setCardError(null);
+    setCardPreview(null);
+    setCardSavedPath(null);
     setIsPreparingCard(true);
     try {
-      setCardPreview(await previewPaperCard(paper.id));
+      setCardPreview(await previewVaultPaperCard(paper.id));
     } catch (reason: unknown) {
       setCardError(
         errorMessage(reason, "assistant.errorCardPreview"),
@@ -334,21 +345,22 @@ export default function AssistantPanel({
     }
   };
 
-  const exportCard = async () => {
+  const saveCard = async () => {
+    if (!cardPreview || cardPreview.already_exists) return;
     setCardError(null);
-    setIsExportingCard(true);
+    setIsSavingCard(true);
     try {
-      await downloadPaperCard(
-        paper.id,
-        paper.name,
-        cardPreview?.existing_card ?? false,
-      );
+      const saved = await saveVaultPaperCard(paper.id, cardPreview.sha256);
+      setCardSavedPath(saved.path);
+      setCardPreview(null);
+      window.dispatchEvent(new Event("research-copilot:vault-changed"));
     } catch (reason: unknown) {
       setCardError(
         errorMessage(reason, "assistant.errorCardExport"),
       );
+      setCardPreview(null);
     } finally {
-      setIsExportingCard(false);
+      setIsSavingCard(false);
     }
   };
 
@@ -443,6 +455,8 @@ export default function AssistantPanel({
         query,
         mode: searchMode,
         scope: searchExecution.scope,
+        scopePreference,
+        snapshotToken: searchExecution.snapshotToken,
       });
       setActiveTab("evidence");
     } catch (reason: unknown) {
@@ -472,6 +486,8 @@ export default function AssistantPanel({
         query,
         mode: searchMode,
         scope: searchExecution.scope,
+        scopePreference: "full_paper",
+        snapshotToken: searchExecution.snapshotToken,
       });
     } catch (reason: unknown) {
       setError(errorMessage(reason, "assistant.errorFullSearch"));
@@ -494,6 +510,12 @@ export default function AssistantPanel({
     setIsAnswering(true);
 
     try {
+      const evidenceSnapshot = task === "question"
+        && completedSearch?.query === query
+        && completedSearch.mode === searchMode
+        && completedSearch.scopePreference === scopePreference
+        ? completedSearch.snapshotToken ?? undefined
+        : undefined;
       const paperAnswer = await answerPaper(
         paper.id,
         query,
@@ -505,6 +527,7 @@ export default function AssistantPanel({
         task,
         anchor,
         refreshTranslation,
+        evidenceSnapshot,
       );
       setAnswer(paperAnswer);
       setResults(paperAnswer.evidence);
@@ -512,6 +535,8 @@ export default function AssistantPanel({
         query,
         mode: searchMode,
         scope: paperAnswer.scope,
+        scopePreference,
+        snapshotToken: null,
       });
       setActiveTab("ask");
       const [sessionHistory, paperHistory] = await Promise.all([
@@ -904,13 +929,15 @@ export default function AssistantPanel({
         </div>
       ) : activeTab === "summary" ? (
         <SummaryView
+          paper={paper}
           confirmedRecordCount={confirmedRecordCount}
           cardPreview={cardPreview}
           cardError={cardError}
+          cardSavedPath={cardSavedPath}
           isPreparingCard={isPreparingCard}
-          isExportingCard={isExportingCard}
+          isSavingCard={isSavingCard}
           onPrepare={() => void prepareCard()}
-          onExport={() => void exportCard()}
+          onSave={() => void saveCard()}
         />
       ) : (
         <InfoView paper={paper} confirmedRecordCount={confirmedRecordCount} />
@@ -923,6 +950,9 @@ export default function AssistantPanel({
           void runAnswer();
         }}
       >
+        {error && activeTab === "evidence" && (
+          <p className="search-error" role="alert">{error}</p>
+        )}
         <label htmlFor="question">
           {t("assistant.askCurrentPaper", {
             session: activeSession?.title ?? t("assistant.defaultSession"),

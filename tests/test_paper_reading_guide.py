@@ -34,6 +34,27 @@ def test_reading_guide_uses_real_section_titles() -> None:
     }
     assert any("Model Architecture" in item.question for item in guide.questions)
     assert any(item.source_page == 7 for item in guide.questions)
+    assert len(guide.questions) == 4
+
+
+def test_reading_guide_does_not_repeat_main_task_for_appendix() -> None:
+    guide = build_reading_guide(
+        PaperStructure(
+            page_count=25,
+            method="bookmarks",
+            sections=[
+                section("1 Introduction", 1),
+                section("4 Our Method", 4),
+                section("5 Empirical Experiments", 5),
+                section("8 Conclusion and Future Work", 12),
+                section("A Large Language Models Still Need Parameter Updates", 16),
+                section("D Hyperparameters Used in Experiments", 18),
+            ],
+        )
+    )
+
+    assert len(guide.questions) == 4
+    assert all(question.source_page < 16 for question in guide.questions)
 
 
 def test_reading_guide_does_not_invent_experiment_questions() -> None:

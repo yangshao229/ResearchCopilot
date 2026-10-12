@@ -1,0 +1,119 @@
+{
+  "dataset_id": "m8.4h-locked-model-comparison-v1",
+  "page_numbering": "one_based_pdf_page_index",
+  "papers": {
+    "lora": {
+      "filename": "lora-hu-2021-v2.pdf",
+      "sha256": "e9a0d3128767db616085dc0f4e6e455e672e89af823e8ed1282793682787395a",
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models"
+    },
+    "transformer": {
+      "filename": "sample.pdf",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "title": "Attention Is All You Need"
+    },
+    "bert": {
+      "filename": "bert-naacl-2019.pdf",
+      "sha256": "987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+    }
+  },
+  "cases": [
+    {
+      "id": "lora_latency_en",
+      "paper": "lora",
+      "language": "en",
+      "query": "How does LoRA avoid additional inference latency?",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_latency_zh",
+      "paper": "lora",
+      "language": "zh",
+      "query": "LoRA 如何避免增加推理延迟？",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_attention_weights_en",
+      "paper": "lora",
+      "language": "en",
+      "query": "Under the fixed 18M-parameter budget, which attention weights give the best overall performance when adapted by LoRA?",
+      "anchor_pages": [10],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_attention_weights_zh",
+      "paper": "lora",
+      "language": "zh",
+      "query": "在固定的 1800 万参数预算下，LoRA 适配哪些注意力权重时整体表现最好？",
+      "anchor_pages": [10],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_scaling_en",
+      "paper": "transformer",
+      "language": "en",
+      "query": "Why are attention dot products divided by the square root of the key dimension?",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_scaling_zh",
+      "paper": "transformer",
+      "language": "zh",
+      "query": "为什么注意力点积要除以键向量维度的平方根？",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_heads_en",
+      "paper": "transformer",
+      "language": "en",
+      "query": "How many attention heads does the Transformer use, and what is each key and value head dimension?",
+      "anchor_pages": [5],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_heads_zh",
+      "paper": "transformer",
+      "language": "zh",
+      "query": "Transformer 使用多少个注意力头？每个头的键和值维度是多少？",
+      "anchor_pages": [5],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_input_embeddings_en",
+      "paper": "bert",
+      "language": "en",
+      "query": "Which three embeddings are summed to form BERT's input representation?",
+      "anchor_pages": [5],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_input_embeddings_zh",
+      "paper": "bert",
+      "language": "zh",
+      "query": "BERT 的输入表示由哪三种嵌入相加形成？",
+      "anchor_pages": [5],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_pretraining_corpora_en",
+      "paper": "bert",
+      "language": "en",
+      "query": "Which two corpora are used to pre-train BERT?",
+      "anchor_pages": [5],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_pretraining_corpora_zh",
+      "paper": "bert",
+      "language": "zh",
+      "query": "BERT 预训练使用哪两个语料库？",
+      "anchor_pages": [5],
+      "known_irrelevant_pages": []
+    }
+  ]
+}

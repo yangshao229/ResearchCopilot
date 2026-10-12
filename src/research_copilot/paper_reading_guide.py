@@ -61,7 +61,9 @@ def build_reading_guide(structure: PaperStructure) -> PaperReadingGuide:
     selected_titles: set[str] = set()
     for role in ("overview", "method", "experiments", "critique"):
         matches = _sections_for_role(structure.sections, role)
-        for section in matches[:2]:
+        # The first matching main section is the reading route; later matches
+        # often come from appendices and need not duplicate the same task.
+        for section in matches[:1]:
             normalized_title = section.title.casefold()
             if normalized_title in selected_titles:
                 continue

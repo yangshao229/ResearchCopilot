@@ -1,5 +1,8 @@
 import argparse
+import ipaddress
+import socket
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
@@ -13,6 +16,61 @@ from research_copilot.paper_search import (
 )
 from research_copilot.pdf_importer import import_pdf_to_json
 from research_copilot.semantic_retriever import DEFAULT_EMBEDDING_MODEL
+
+
+DEFAULT_SERVER_PORT = 8000
+MAX_PORT_ATTEMPTS = 20
+
+
+def _require_loopback_host(host: str) -> None:
+    if host == "localhost":
+        return
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        address = None
+    if address is None or not address.is_loopback:
+        raise ValueError(
+            "当前自测版没有账号认证，只允许监听本机回环地址，"
+            "例如 127.0.0.1、localhost 或 ::1。"
+        )
+
+
+def _port_is_available(host: str, port: int) -> bool:
+    family = socket.AF_INET6 if ":" in host else socket.AF_INET
+    try:
+        with socket.socket(family, socket.SOCK_STREAM) as probe:
+            probe.bind((host, port))
+    except PermissionError as error:
+        raise ValueError(
+            "系统拒绝监听本地端口；请检查终端或运行环境的网络权限。"
+        ) from error
+    except OSError:
+        return False
+    return True
+
+
+def select_server_port(host: str, requested_port: int | None) -> int:
+    _require_loopback_host(host)
+    if requested_port is not None:
+        if not _port_is_available(host, requested_port):
+            raise ValueError(f"端口 {requested_port} 已被占用，请选择其他端口。")
+        return requested_port
+
+    for port in range(DEFAULT_SERVER_PORT, DEFAULT_SERVER_PORT + MAX_PORT_ATTEMPTS):
+        if _port_is_available(host, port):
+            return port
+    raise ValueError("本地端口 8000–8019 均不可用，无法启动阅读器。")
+
+
+def _open_browser_when_ready(server: object, url: str) -> None:
+    for _ in range(150):
+        if getattr(server, "started", False):
+            webbrowser.open(url)
+            return
+        if getattr(server, "should_exit", False):
+            return
+        time.sleep(0.1)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -113,11 +171,13 @@ def build_parser() -> argparse.ArgumentParser:
     serve_parser.add_argument(
         "--host",
         default="127.0.0.1",
+        help="Loopback address only; this self-test version has no authentication.",
     )
     serve_parser.add_argument(
         "--port",
         type=int,
-        default=8000,
+        default=None,
+        help="Use a specific port; by default choose the first free port from 8000 to 8019.",
     )
     serve_parser.add_argument(
         "--paper-directory",
@@ -134,7 +194,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    args = build_parser().parse_args()
+    parser = build_parser()
+    args = parser.parse_args()
 
     if args.command == "import":
         import_pdf_to_json(
@@ -163,14 +224,31 @@ def main() -> None:
         from research_copilot.web_app import create_app
 
         load_dotenv(PROJECT_ROOT / ".env")
-        if not args.no_open:
-            workspace_url = f"http://{args.host}:{args.port}/"
-            threading.Timer(0.8, webbrowser.open, args=(workspace_url,)).start()
-        uvicorn.run(
-            create_app(args.paper_directory),
-            host=args.host,
-            port=args.port,
+        try:
+            port = select_server_port(args.host, args.port)
+        except ValueError as error:
+            parser.error(str(error))
+
+        browser_host = args.host
+        if ":" in browser_host:
+            browser_host = f"[{browser_host}]"
+        workspace_url = f"http://{browser_host}:{port}/"
+        server = uvicorn.Server(
+            uvicorn.Config(create_app(args.paper_directory), host=args.host, port=port)
         )
+        print(f"ResearchCopilot: {workspace_url}", flush=True)
+        if port != DEFAULT_SERVER_PORT and args.port is None:
+            print("端口 8000 已被其他服务占用，已自动选择可用端口。", flush=True)
+        if not args.no_open:
+            threading.Thread(
+                target=_open_browser_when_ready,
+                args=(server, workspace_url),
+                daemon=True,
+            ).start()
+        try:
+            server.run()
+        except KeyboardInterrupt:
+            pass
         return
 
     if args.command == "semantic-search":

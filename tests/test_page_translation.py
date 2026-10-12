@@ -175,6 +175,24 @@ def test_incomplete_deepseek_translation_reports_token_limit_instead_of_bad_json
         model.translate("Only page one text.", LanguagePolicy(), [])
 
 
+def test_deepseek_does_not_accept_untranslated_long_english_page() -> None:
+    import json
+
+    source = "The model updates low rank matrices during adaptation. " * 20
+
+    class Response:
+        status_code = 200
+
+        def json(self) -> dict:
+            return {"output_text": json.dumps({"translated_text": source})}
+
+    model = DeepSeekPageTranslationModel(
+        api_key="test-key", post=lambda _url, **_kwargs: Response()
+    )
+    with pytest.raises(AnswerGenerationError, match="仍主要是英文"):
+        model.translate(source, LanguagePolicy(), [])
+
+
 def test_formula_markers_must_be_preserved_exactly_once() -> None:
     from research_copilot.formula_protection import FormulaRegion
 

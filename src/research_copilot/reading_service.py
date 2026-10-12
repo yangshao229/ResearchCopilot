@@ -4,13 +4,16 @@ from pathlib import Path
 
 from research_copilot.conversation_sessions import ConversationSessionStore
 from research_copilot.document_service import PaperDocumentService
+from research_copilot.evidence_snapshot import EvidenceSnapshotUnavailable
 from research_copilot.domain import (
     Evidence,
+    EvidenceSet,
     PaperAnswer,
     ReadingAnchor,
     ReadingContext,
     ReadingScope,
     SearchHit,
+    SourceDocumentRef,
     TranslationLanguage,
 )
 from research_copilot.paper_glossary import (
@@ -19,6 +22,7 @@ from research_copilot.paper_glossary import (
     match_glossary_entries,
 )
 from research_copilot.paper_answer_service import PaperAnswerService
+from research_copilot.paper_identity import hash_pdf
 from research_copilot.paper_question_router import (
     answer_structural_question,
     classify_paper_question,
@@ -56,9 +60,13 @@ class ReadingService:
         paper_name: str,
         context: ReadingContext,
         limit: int = 5,
+        source_document: SourceDocumentRef | None = None,
+        evidence_set: EvidenceSet | None = None,
     ) -> PaperAnswer:
         if not self.session_store.contains(context.paper_id, context.session_id):
             raise KeyError(context.session_id)
+        if evidence_set is not None and context.task == "translate":
+            raise ValueError("选区翻译不能复用检索快照。")
 
         answer = None
         selection_preview: SelectionContextPreview | None = None
@@ -88,6 +96,7 @@ class ReadingService:
                     context,
                     selection_preview,
                     direct_evidence[0],
+                    source_document,
                 )
                 if cached_answer is not None:
                     return cached_answer
@@ -101,6 +110,10 @@ class ReadingService:
             if is_content_question
             else ReadingScope()
         )
+        if evidence_set is not None and evidence_set.scope != scope:
+            raise EvidenceSnapshotUnavailable(
+                "论文的检索范围已变化。请重新检索原文后再生成回答。"
+            )
         if not is_content_question:
             answer = answer_structural_question(
                 context.query,
@@ -127,10 +140,20 @@ class ReadingService:
                     if selection_preview is not None
                     else None
                 ),
+                source_document=source_document,
+                evidence_set=evidence_set,
             )
         answer = answer.model_copy(
             update={"scope": scope, "language": context.language}
         )
+        if (
+            evidence_set is not None
+            and source_document is not None
+            and hash_pdf(pdf_path) != source_document.pdf_sha256
+        ):
+            raise EvidenceSnapshotUnavailable(
+                "PDF 在生成回答时发生变化，结果未保存。请重新检索原文。"
+            )
 
         record = self.history_store.add_record(
             context.paper_id,
@@ -164,6 +187,7 @@ class ReadingService:
         context: ReadingContext,
         preview: SelectionContextPreview,
         hit: SearchHit,
+        source_document: SourceDocumentRef | None,
     ) -> PaperAnswer | None:
         model = self.answer_service.answer_model
         current_glossary_signature = glossary_signature(preview.glossary_terms)
@@ -188,6 +212,11 @@ class ReadingService:
                 or any(
                     citation.source_page != preview.source_page
                     or citation.quote != preview.selected_text
+                    or (
+                        source_document is not None
+                        and citation.source
+                        != source_document.at_page(citation.source_page)
+                    )
                     for citation in record.citations
                 )
             ):
@@ -198,7 +227,17 @@ class ReadingService:
                 citations=record.citations,
                 insufficient_evidence=False,
                 uncertainty=record.uncertainty,
-                evidence=[Evidence(evidence_id=1, **hit.model_dump())],
+                evidence=[
+                    Evidence(
+                        evidence_id=1,
+                        **hit.model_copy(
+                            update={
+                                "source": source_document.at_page(hit.source_page)
+                                if source_document is not None else None
+                            }
+                        ).model_dump(),
+                    )
+                ],
                 provider=record.provider,
                 model=record.model,
                 history_id=record.id,
@@ -246,26 +285,31 @@ class ReadingService:
         pdf_path: Path,
         context: ReadingContext,
         limit: int = 5,
+        source_document: SourceDocumentRef | None = None,
     ) -> tuple[list[dict[str, object]], ReadingScope]:
-        scope = self.resolve_scope(pdf_path, context)
-        if scope.kind == "section":
-            results = self.answer_service.search_service.search(
-                pdf_path,
-                context.paper_id,
-                context.query,
-                context.search_mode,
-                limit=limit,
-                scope=scope,
-            )
-        else:
-            results = self.answer_service.search_service.search(
-                pdf_path,
-                context.paper_id,
-                context.query,
-                context.search_mode,
-                limit=limit,
-            )
+        evidence_set, scope = self.search_evidence(
+            pdf_path, context, limit=limit, source_document=source_document
+        )
         return [
-            result.model_dump() if hasattr(result, "model_dump") else dict(result)
-            for result in results
+            candidate.model_dump(exclude={"evidence_id"})
+            for candidate in evidence_set.candidates
         ], scope
+
+    def search_evidence(
+        self,
+        pdf_path: Path,
+        context: ReadingContext,
+        limit: int = 5,
+        source_document: SourceDocumentRef | None = None,
+    ) -> tuple[EvidenceSet, ReadingScope]:
+        scope = self.resolve_scope(pdf_path, context)
+        evidence_set = self.answer_service.collect_evidence(
+            pdf_path,
+            context.paper_id,
+            context.query,
+            context.search_mode,
+            limit=limit,
+            scope=scope if scope.kind == "section" else None,
+            source_document=source_document,
+        )
+        return evidence_set.model_copy(update={"scope": scope}), scope

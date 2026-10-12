@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from research_copilot.conversation_sessions import ConversationSessionStore
-from research_copilot.page_store import save_page_data
+from research_copilot.page_store import load_page_data, save_page_data
 from research_copilot.paper_answer_service import (
     AnswerCitation,
     ModelAnswerDraft,
@@ -12,6 +12,7 @@ from research_copilot.paper_answer_service import (
     PaperAnswerService,
 )
 from research_copilot.paper_card_compiler import PaperCardCompiler
+from research_copilot.paper_identity import hash_pdf
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.semantic_retriever import EmbeddingModel
@@ -56,6 +57,27 @@ def test_paper_api_lists_local_pdfs(tmp_path: Path) -> None:
     assert papers[0]["name"] == "attention.pdf"
     assert papers[0]["relative_path"] == "attention.pdf"
     assert papers[0]["page_count"] == 2
+    assert papers[0]["paper_uid"].startswith("paper-")
+    assert len(papers[0]["pdf_sha256"]) == 64
+    assert papers[0]["pdf_version_status"] == "current"
+
+
+def test_health_api_exposes_frontend_contract_version(tmp_path: Path) -> None:
+    client = TestClient(
+        create_app(
+            paper_directory=tmp_path / "papers",
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+
+    response = client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ok",
+        "version": "0.1.0",
+        "api_schema": 2,
+    }
 
 
 def test_paper_api_imports_pdf_from_browser(tmp_path: Path) -> None:
@@ -261,6 +283,7 @@ def test_paper_api_searches_current_paper_with_keywords(tmp_path: Path) -> None:
     save_page_data(
         {
             "source_pdf": "attention.pdf",
+            "source_pdf_sha256": hash_pdf(paper_path),
             "pages": [
                 {"source_page": 1, "text": "Convolution processes images."},
                 {
@@ -282,6 +305,53 @@ def test_paper_api_searches_current_paper_with_keywords(tmp_path: Path) -> None:
     assert len(results) == 1
     assert results[0]["source_page"] == 2
     assert results[0]["score"] == 3.0
+    paper = client.get("/api/papers").json()[0]
+    assert results[0]["source"] == {
+        "paper_uid": paper["paper_uid"],
+        "pdf_sha256": paper["pdf_sha256"],
+        "source_page": 2,
+    }
+
+
+def test_legacy_page_cache_without_fingerprint_is_rebuilt_before_source_anchor(
+    tmp_path: Path,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    processed_directory = tmp_path / "processed"
+    paper_directory.mkdir()
+    paper_path = paper_directory / "attention.pdf"
+    create_test_pdf(paper_path)
+    client = TestClient(
+        create_app(
+            paper_directory=paper_directory,
+            processed_directory=processed_directory,
+            frontend_directory=tmp_path / "missing-frontend",
+        )
+    )
+    paper_id = client.get("/api/papers").json()[0]["id"]
+    processed_directory.mkdir()
+    save_page_data(
+        {
+            "source_pdf": "attention.pdf",
+            "pages": [
+                {
+                    "source_page": 1,
+                    "text": "Attention uses a legacy extraction cache.",
+                }
+            ],
+        },
+        processed_directory / f"{paper_id}.json",
+    )
+
+    response = client.post(
+        f"/api/papers/{paper_id}/search",
+        json={"query": "legacy", "mode": "keyword", "limit": 3},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+    rebuilt = load_page_data(processed_directory / f"{paper_id}.json")
+    assert rebuilt["source_pdf_sha256"] == hash_pdf(paper_path)
 
 
 class SearchApiFakeEmbeddingModel(EmbeddingModel):
@@ -314,6 +384,7 @@ def test_paper_api_searches_current_paper_semantically(tmp_path: Path) -> None:
     save_page_data(
         {
             "source_pdf": "attention.pdf",
+            "source_pdf_sha256": hash_pdf(paper_path),
             "pages": [
                 {"source_page": 3, "text": "First passage."},
                 {"source_page": 7, "text": "Second passage."},
@@ -331,6 +402,41 @@ def test_paper_api_searches_current_paper_semantically(tmp_path: Path) -> None:
     results = response.json()
     assert results[0]["source_page"] == 7
     assert results[0]["score"] == 0.9
+
+
+def test_missing_embedding_model_fails_fast_without_network(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    paper_directory = tmp_path / "papers"
+    paper_directory.mkdir()
+    create_test_pdf(paper_directory / "paper.pdf")
+    requested_local_only: list[bool] = []
+
+    def unavailable_model(*, local_files_only: bool):
+        requested_local_only.append(local_files_only)
+        raise OSError("model files are not cached")
+
+    monkeypatch.setattr(
+        "research_copilot.paper_search_service.E5EmbeddingModel", unavailable_model
+    )
+    search_service = PaperSearchService(tmp_path / "processed")
+    client = TestClient(create_app(
+        paper_directory=paper_directory,
+        frontend_directory=tmp_path / "missing-frontend",
+        search_service=search_service,
+        answer_service=PaperAnswerService(search_service, AnswerApiFakeModel()),
+        history_store=ReadingHistoryStore(tmp_path / "history"),
+    ))
+    paper_id = client.get("/api/papers").json()[0]["id"]
+
+    for endpoint in ("search", "answer"):
+        response = client.post(
+            f"/api/papers/{paper_id}/{endpoint}",
+            json={"query": "What does this paper propose?", "mode": "hybrid"},
+        )
+        assert response.status_code == 503
+        assert "关键词检索" in response.json()["detail"]
+    assert requested_local_only == [True, True]
 
 
 def test_paper_api_exposes_hybrid_ranking_explanation(tmp_path: Path) -> None:
@@ -355,6 +461,7 @@ def test_paper_api_exposes_hybrid_ranking_explanation(tmp_path: Path) -> None:
     save_page_data(
         {
             "source_pdf": "attention.pdf",
+            "source_pdf_sha256": hash_pdf(paper_path),
             "pages": [
                 {"source_page": 3, "text": "First passage."},
                 {
@@ -448,6 +555,7 @@ def test_paper_api_generates_answer_with_verified_page_citation(
     save_page_data(
         {
             "source_pdf": "attention.pdf",
+            "source_pdf_sha256": hash_pdf(paper_path),
             "pages": [
                 {
                     "source_page": 2,
@@ -537,6 +645,7 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     save_page_data(
         {
             "source_pdf": "attention.pdf",
+            "source_pdf_sha256": hash_pdf(paper_path),
             "pages": [
                 {
                     "source_page": 1,
@@ -590,6 +699,15 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     answer = answer_response.json()
     assert answer["citations"][0]["source_page"] == 2
     record = client.get(f"/api/papers/{paper_id}/history").json()[0]
+    paper = client.get("/api/papers").json()[0]
+    expected_source = {
+        "paper_uid": paper["paper_uid"],
+        "pdf_sha256": paper["pdf_sha256"],
+        "source_page": 2,
+    }
+    assert answer["citations"][0]["source"] == expected_source
+    assert answer["evidence"][0]["source"] == expected_source
+    assert record["citations"][0]["source"] == expected_source
     assert record["task"] == "translate"
     assert record["anchor"]["source_page"] == 2
     assert selected_text in record["anchor"]["selected_text"]
@@ -611,6 +729,7 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
     assert repeated.json()["cache_hit"] is True
     assert repeated.json()["history_id"] == answer["history_id"]
     assert repeated.json()["evidence"][0]["source_page"] == 2
+    assert repeated.json()["evidence"][0]["source"] == expected_source
     assert fake_model.call_count == 1
     assert len(history_store.list_records(paper_id)) == 1
 
@@ -731,6 +850,13 @@ def test_selection_context_preview_and_translation_keep_anchor_and_context(
         f"/api/papers/{paper_id}/answer", json=failed_request
     )
     assert first_failure.json()["insufficient_evidence"] is True
+    assert "Transformer 不使用循环结构" not in first_failure.json()["answer"]
+    failed_record = next(
+        record for record in history_store.list_records(paper_id)
+        if record.id == first_failure.json()["history_id"]
+    )
+    assert "Transformer 不使用循环结构" not in failed_record.answer
+    assert failed_record.citations == []
     assert second_failure.json()["cache_hit"] is False
     assert fake_model.call_count == 9
 
@@ -993,6 +1119,7 @@ def test_paper_answer_api_explains_missing_deepseek_key(
     save_page_data(
         {
             "source_pdf": "attention.pdf",
+            "source_pdf_sha256": hash_pdf(paper_path),
             "pages": [
                 {"source_page": 1, "text": "Attention connects positions."}
             ],

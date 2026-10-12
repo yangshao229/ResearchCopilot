@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 from research_copilot.domain import (
     AnswerCitation,
     Evidence,
+    EvidenceSet,
     GlossaryEntry,
     LanguagePolicy,
     PaperAnswer,
@@ -17,6 +18,7 @@ from research_copilot.domain import (
     ReadingScope,
     SearchHit,
     SearchMode,
+    SourceDocumentRef,
 )
 
 DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com"
@@ -124,6 +126,8 @@ class DeepSeekAnswerModel:
                         glossary_terms,
                     ),
                     "max_output_tokens": 1600,
+                    # A concise cited answer needs output tokens, not hidden reasoning.
+                    "reasoning": {"effort": "none"},
                     "text": {
                         "format": {
                             "type": "json_schema",
@@ -146,6 +150,16 @@ class DeepSeekAnswerModel:
                     f"DeepSeek API returned {response.status_code}: "
                     f"{error_message or 'unknown error'}"
                 )
+
+            if response_body.get("status") == "incomplete":
+                reason = (response_body.get("incomplete_details") or {}).get("reason")
+                if reason == "max_output_tokens":
+                    raise AnswerGenerationError(
+                        "DeepSeek 回答达到 token 上限，未保存不完整结果；请缩小问题范围后重试。"
+                    )
+                raise AnswerGenerationError("DeepSeek 未完成回答，结果未保存。")
+            if response_body.get("status") == "failed":
+                raise AnswerGenerationError("DeepSeek 生成回答失败，结果未保存。")
 
             output_text = self._extract_output_text(response_body)
             if not output_text:
@@ -203,7 +217,8 @@ class DeepSeekAnswerModel:
             "你是科研论文阅读助手。只能根据用户提供的论文证据回答，"
             "不得使用证据之外的论文细节。区分直接结论、解释和不确定性。"
             "引用只能填写证据中存在的 evidence_id。证据不足时必须将 "
-            "insufficient_evidence 设为 true，并明确说明缺少什么。"
+            "insufficient_evidence 设为 true，answer 只说明无法确定，"
+            "不得写出未经支持的结论，并明确说明缺少什么。"
             "输出必须是符合给定 JSON Schema 的 JSON。"
         )
 
@@ -284,6 +299,69 @@ class PaperAnswerService:
         self.search_service = search_service
         self.answer_model = answer_model or DeepSeekAnswerModel()
 
+    def _refusal_answer(
+        self,
+        *,
+        answer: str,
+        explanation: str,
+        uncertainty: str,
+        evidence: list[Evidence],
+        scope: ReadingScope | None,
+        language: LanguagePolicy,
+    ) -> PaperAnswer:
+        return PaperAnswer(
+            answer=answer,
+            explanation=explanation,
+            citations=[],
+            insufficient_evidence=True,
+            uncertainty=uncertainty,
+            evidence=evidence,
+            provider=self.answer_model.provider_name,
+            model=self.answer_model.model_name,
+            scope=scope or ReadingScope(),
+            language=language,
+        )
+
+    def collect_evidence(
+        self,
+        pdf_path: Path,
+        paper_id: str,
+        question: str,
+        mode: SearchMode,
+        limit: int = 5,
+        scope: ReadingScope | None = None,
+        direct_evidence: list[SearchHit | Mapping[str, object]] | None = None,
+        source_document: SourceDocumentRef | None = None,
+    ) -> EvidenceSet:
+        if direct_evidence is not None:
+            raw_candidates = direct_evidence
+        elif scope is None:
+            raw_candidates = self.search_service.search(
+                pdf_path, paper_id, question, mode, limit=limit
+            )
+        else:
+            raw_candidates = self.search_service.search(
+                pdf_path, paper_id, question, mode, limit=limit, scope=scope
+            )
+
+        candidates: list[Evidence] = []
+        for index, item in enumerate(raw_candidates, start=1):
+            hit = item if isinstance(item, SearchHit) else SearchHit.model_validate(item)
+            if source_document is not None:
+                expected_source = source_document.at_page(hit.source_page)
+                if hit.source is not None and hit.source != expected_source:
+                    raise ValueError("Candidate belongs to a different PDF version.")
+                hit = hit.model_copy(
+                    update={"source": expected_source}
+                )
+            candidates.append(Evidence(evidence_id=index, **hit.model_dump()))
+        return EvidenceSet(
+            query=question,
+            origin="selection" if direct_evidence is not None else "retrieval",
+            scope=scope or ReadingScope(),
+            candidates=candidates,
+        )
+
     def answer(
         self,
         pdf_path: Path,
@@ -297,51 +375,39 @@ class PaperAnswerService:
         direct_evidence: list[SearchHit | Mapping[str, object]] | None = None,
         task_context: str = "",
         glossary_terms: list[GlossaryEntry] | None = None,
+        source_document: SourceDocumentRef | None = None,
+        evidence_set: EvidenceSet | None = None,
     ) -> PaperAnswer:
         policy = language or LanguagePolicy()
-        if direct_evidence is not None:
-            raw_evidence = direct_evidence
-        elif scope is None:
-            raw_evidence = self.search_service.search(
-                pdf_path,
-                paper_id,
-                question,
-                mode,
-                limit=limit,
-            )
+        if evidence_set is not None:
+            if direct_evidence is not None or task == "translate":
+                raise ValueError("A search snapshot cannot replace selected text.")
+            if evidence_set.origin != "retrieval" or evidence_set.query != question:
+                raise ValueError("Search snapshot does not match the question.")
+            if source_document is not None and any(
+                candidate.source != source_document.at_page(candidate.source_page)
+                for candidate in evidence_set.candidates
+            ):
+                raise ValueError("Search snapshot belongs to another PDF version.")
         else:
-            raw_evidence = self.search_service.search(
+            evidence_set = self.collect_evidence(
                 pdf_path,
                 paper_id,
                 question,
                 mode,
                 limit=limit,
                 scope=scope,
+                direct_evidence=direct_evidence,
+                source_document=source_document,
             )
-        evidence: list[Evidence] = []
-        for index, item in enumerate(raw_evidence, start=1):
-            hit = (
-                item
-                if isinstance(item, SearchHit)
-                else SearchHit.model_validate(item)
-            )
-            evidence.append(
-                Evidence(
-                    evidence_id=index,
-                    **hit.model_dump(),
-                )
-            )
+        evidence = evidence_set.candidates
 
         if not evidence:
-            return PaperAnswer(
+            return self._refusal_answer(
                 answer="当前论文中没有检索到足以回答该问题的原文证据。",
                 explanation="请换一种问法，或切换关键词与语义检索后重试。",
-                citations=[],
-                insufficient_evidence=True,
                 uncertainty="没有可供模型核对的论文片段。",
                 evidence=[],
-                provider=self.answer_model.provider_name,
-                model=self.answer_model.model_name,
                 scope=scope or ReadingScope(),
                 language=policy,
             )
@@ -354,37 +420,47 @@ class PaperAnswerService:
             task_context,
             glossary_terms if task == "translate" else None,
         )
-        evidence_by_id = {item.evidence_id: item for item in evidence}
-        valid_ids = list(
-            dict.fromkeys(
-                evidence_id
-                for evidence_id in draft.cited_evidence_ids
-                if evidence_id in evidence_by_id
+        if draft.insufficient_evidence:
+            use_english = policy.explanation_language == "en" or (
+                policy.explanation_language == "follow_question"
+                and not any("\u4e00" <= char <= "\u9fff" for char in question)
             )
-        )
-        citations = [
-            AnswerCitation(
-                evidence_id=evidence_id,
-                source_page=evidence_by_id[evidence_id].source_page,
-                quote=evidence_by_id[evidence_id].text,
-            )
-            for evidence_id in valid_ids
-        ]
-
-        missing_valid_citation = not citations and not draft.insufficient_evidence
-        if missing_valid_citation:
-            return PaperAnswer(
-                answer="现有回答没有通过原文引用校验，因此没有展示模型结论。",
-                explanation="模型未引用任何真实检索证据。请重新检索或换一种问法。",
-                citations=[],
-                insufficient_evidence=True,
-                uncertainty="引用校验失败。",
+            if use_english:
+                answer_text = "Insufficient evidence; no conclusion is shown."
+                explanation_text = (
+                    "The model reported insufficient evidence. "
+                    "Please review the original excerpts and PDF pages."
+                )
+                uncertainty_text = "The model's draft was not verified."
+            else:
+                answer_text = "证据不足，暂不展示模型生成的结论。"
+                explanation_text = (
+                    "模型报告证据不足；请核对下方原文片段与 PDF 页码。"
+                )
+                uncertainty_text = "模型草稿未经证据核实。"
+            return self._refusal_answer(
+                answer=answer_text,
+                explanation=explanation_text,
+                uncertainty=uncertainty_text,
                 evidence=evidence,
-                provider=self.answer_model.provider_name,
-                model=self.answer_model.model_name,
                 scope=scope or ReadingScope(),
                 language=policy,
             )
+        valid_ids = {item.evidence_id for item in evidence}
+        invalid_citations = (
+            not draft.cited_evidence_ids
+            or any(item_id not in valid_ids for item_id in draft.cited_evidence_ids)
+        )
+        if invalid_citations:
+            return self._refusal_answer(
+                answer="现有回答没有通过原文引用校验，因此没有展示模型结论。",
+                explanation="模型缺少真实引用或包含无效证据编号。请重新检索或换一种问法。",
+                uncertainty="引用校验失败。",
+                evidence=evidence,
+                scope=scope or ReadingScope(),
+                language=policy,
+            )
+        citations = evidence_set.citations_for(draft.cited_evidence_ids)
 
         return PaperAnswer(
             answer=draft.answer,

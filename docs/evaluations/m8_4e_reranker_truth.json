@@ -1,0 +1,111 @@
+{
+  "dataset_id": "m8.4e-offline-reranker-v1",
+  "page_numbering": "one_based_pdf_page_index",
+  "papers": {
+    "lora": {
+      "filename": "lora-hu-2021-v2.pdf",
+      "sha256": "e9a0d3128767db616085dc0f4e6e455e672e89af823e8ed1282793682787395a",
+      "title": "LoRA: Low-Rank Adaptation of Large Language Models"
+    },
+    "transformer": {
+      "filename": "sample.pdf",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "title": "Attention Is All You Need"
+    },
+    "bert": {
+      "filename": "bert-naacl-2019.pdf",
+      "sha256": "987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"
+    }
+  },
+  "cases": [
+    {
+      "id": "lora_matrices_en",
+      "paper": "lora",
+      "language": "en",
+      "query": "Which matrices does LoRA train?",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_matrices_zh",
+      "paper": "lora",
+      "language": "zh",
+      "query": "LoRA 训练的是哪两个低秩矩阵？",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "lora_no_answer",
+      "paper": "lora",
+      "language": "en",
+      "query": "What quantum entanglement fidelity does LoRA report?",
+      "anchor_pages": [],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_position_en",
+      "paper": "transformer",
+      "language": "en",
+      "query": "How does the Transformer encode token positions?",
+      "anchor_pages": [6],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_position_zh",
+      "paper": "transformer",
+      "language": "zh",
+      "query": "Transformer 如何表示词的位置？",
+      "anchor_pages": [6],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_hardware_en",
+      "paper": "transformer",
+      "language": "en",
+      "query": "What hardware and training time does the Transformer paper report?",
+      "anchor_pages": [7],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "transformer_no_answer",
+      "paper": "transformer",
+      "language": "en",
+      "query": "What quantum entanglement fidelity does the Transformer report?",
+      "anchor_pages": [],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_masked_lm_en",
+      "paper": "bert",
+      "language": "en",
+      "query": "How does BERT train its masked language model?",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_masked_lm_zh",
+      "paper": "bert",
+      "language": "zh",
+      "query": "BERT 的遮盖语言模型如何选择被遮盖的词？",
+      "anchor_pages": [4],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_hardware_en",
+      "paper": "bert",
+      "language": "en",
+      "query": "What hardware and training time does BERT report?",
+      "anchor_pages": [13],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "bert_no_answer",
+      "paper": "bert",
+      "language": "en",
+      "query": "What ImageNet image classification accuracy does BERT report?",
+      "anchor_pages": [],
+      "known_irrelevant_pages": [10]
+    }
+  ]
+}

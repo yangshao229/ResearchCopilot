@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from pypdf import PdfWriter
 
 from research_copilot.page_store import save_page_data
+from research_copilot.paper_identity import hash_pdf
 from research_copilot.paper_search_service import PaperSearchService
 from research_copilot.reading_history import ReadingHistoryStore
 from research_copilot.web_app import create_app
@@ -16,10 +17,11 @@ def _blank_pdf(path: Path) -> None:
         writer.write(output)
 
 
-def _page_data(path: Path, pages: list[str]) -> None:
+def _page_data(path: Path, pdf_path: Path, pages: list[str]) -> None:
     save_page_data(
         {
             "source_pdf": "fixture.pdf",
+            "source_pdf_sha256": hash_pdf(pdf_path),
             "pages": [
                 {"source_page": number, "text": text}
                 for number, text in enumerate(pages, start=1)
@@ -38,6 +40,7 @@ def test_library_text_search_requires_all_terms_and_preserves_pages(
     processed.mkdir()
     _page_data(
         processed / "paper-id.json",
+        pdf_path,
         [
             "Graph methods appear here without the second term.",
             "Graph attention networks combine neighborhood evidence. " * 8,
@@ -80,10 +83,12 @@ def test_library_search_api_respects_scope_and_reports_unsearchable_papers(
     processed.mkdir()
     _page_data(
         processed / f"{paper_ids['first.pdf']}.json",
+        papers / "first.pdf",
         ["Introduction", "Graph attention finds relevant neighbors."],
     )
     _page_data(
         processed / f"{paper_ids['second.pdf']}.json",
+        papers / "second.pdf",
         ["Graph convolution uses a different operator."],
     )
 

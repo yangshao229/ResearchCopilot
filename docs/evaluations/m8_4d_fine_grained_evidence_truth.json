@@ -1,0 +1,106 @@
+{
+  "dataset_id": "m8.4d-fine-grained-evidence-v1",
+  "extends": "m8.4c-evidence-gate-v1",
+  "page_numbering": "one_based_pdf_page_index",
+  "per_paper_limit": 3,
+  "papers": {
+    "transformer": {
+      "filename": "sample.pdf",
+      "sha256": "bdfaa68d8984f0dc02beaca527b76f207d99b666d31d1da728ee0728182df697",
+      "title": "Attention Is All You Need",
+      "source_url": "https://arxiv.org/abs/1706.03762"
+    },
+    "bert": {
+      "filename": "bert-naacl-2019.pdf",
+      "sha256": "987545ffb087f1ece898142c403a516baeabeb70ce19089397fac6f7db12c3d4",
+      "title": "BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+      "source_url": "https://aclanthology.org/N19-1423/"
+    }
+  },
+  "cases": [
+    {
+      "id": "mlm_keyword",
+      "split": "calibration",
+      "query": "masked language model",
+      "relevant_pages": {"transformer": [], "bert": [4]},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "self_attention_keyword",
+      "split": "calibration",
+      "query": "self-attention",
+      "relevant_pages": {"transformer": [2, 3, 6], "bert": [1, 3, 5]},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "position_question_zh",
+      "split": "calibration",
+      "query": "两篇论文如何表示词的位置？",
+      "relevant_pages": {"transformer": [6], "bert": [4]},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "position_question_en",
+      "split": "calibration",
+      "query": "How do the papers encode token positions?",
+      "relevant_pages": {"transformer": [6], "bert": [4]},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "learning_rate_keyword",
+      "split": "calibration",
+      "query": "learning rate",
+      "relevant_pages": {"transformer": [7], "bert": [6, 13, 14]},
+      "known_irrelevant_pages": {"transformer": [2, 12], "bert": [3]}
+    },
+    {
+      "id": "no_evidence",
+      "split": "calibration",
+      "query": "quantum entanglement",
+      "relevant_pages": {"transformer": [], "bert": []},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "no_evidence_question_en",
+      "split": "calibration",
+      "query": "What evidence do the papers provide about quantum entanglement?",
+      "relevant_pages": {"transformer": [], "bert": []},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "no_evidence_question_zh",
+      "split": "calibration",
+      "query": "这两篇论文为量子纠缠提供了什么证据？",
+      "relevant_pages": {"transformer": [], "bert": []},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "training_hardware_question_en",
+      "split": "held_out",
+      "query": "What hardware and how much time were used to train the models?",
+      "relevant_pages": {"transformer": [7], "bert": [13]},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "training_hardware_question_zh",
+      "split": "held_out",
+      "query": "两篇论文训练时使用了什么硬件，需要多长时间？",
+      "relevant_pages": {"transformer": [7], "bert": [13]},
+      "known_irrelevant_pages": {"transformer": [], "bert": []}
+    },
+    {
+      "id": "imagenet_accuracy_question_en",
+      "split": "held_out",
+      "query": "What accuracy do the papers report for image classification on ImageNet?",
+      "relevant_pages": {"transformer": [], "bert": []},
+      "known_irrelevant_pages": {"transformer": [], "bert": [10]}
+    },
+    {
+      "id": "imagenet_accuracy_question_zh",
+      "split": "held_out",
+      "query": "两篇论文在 ImageNet 图像分类上取得了什么准确率？",
+      "relevant_pages": {"transformer": [], "bert": []},
+      "known_irrelevant_pages": {"transformer": [], "bert": [10]}
+    }
+  ]
+}

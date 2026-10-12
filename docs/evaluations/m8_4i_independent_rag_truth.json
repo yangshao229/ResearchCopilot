@@ -1,0 +1,127 @@
+{
+  "dataset_id": "m8.4i-independent-rag-paper-v1",
+  "page_numbering": "one_based_pdf_page_index",
+  "papers": {
+    "rag": {
+      "filename": "rag-lewis-2021-v4.pdf",
+      "sha256": "23e3249e9a1e75418d82efecab0ea8c4d033b89c93742f63208d47ce01f21233",
+      "title": "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"
+    }
+  },
+  "cases": [
+    {
+      "id": "rag_memory_en",
+      "paper": "rag",
+      "language": "en",
+      "query": "What are RAG's parametric and non-parametric memory components?",
+      "anchor_pages": [2],
+      "evidence_requirements": [
+        ["parametric memory is a pre-trained seq2seq transformer"],
+        ["non-parametric memory is a dense vector index of Wikipedia"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_memory_zh",
+      "paper": "rag",
+      "language": "zh",
+      "query": "RAG 的参数化记忆和非参数化记忆分别是什么组件？",
+      "anchor_pages": [2],
+      "evidence_requirements": [
+        ["parametric memory is a pre-trained seq2seq transformer"],
+        ["non-parametric memory is a dense vector index of Wikipedia"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_sequence_token_en",
+      "paper": "rag",
+      "language": "en",
+      "query": "How do RAG-Sequence and RAG-Token differ in which retrieved documents they use while generating an output?",
+      "anchor_pages": [3],
+      "evidence_requirements": [
+        ["RAG-Sequence, the model uses the same document to predict each target token", "RAG-Sequence model uses the same retrieved document to generate the complete sequence"],
+        ["RAG-Token, can predict each target token based on a different document", "different latent document for each target token"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_sequence_token_zh",
+      "paper": "rag",
+      "language": "zh",
+      "query": "RAG-Sequence 和 RAG-Token 在生成输出时使用检索文档的方式有什么不同？",
+      "anchor_pages": [3],
+      "evidence_requirements": [
+        ["RAG-Sequence, the model uses the same document to predict each target token", "RAG-Sequence model uses the same retrieved document to generate the complete sequence"],
+        ["RAG-Token, can predict each target token based on a different document", "different latent document for each target token"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_frozen_encoder_en",
+      "paper": "rag",
+      "language": "en",
+      "query": "Which encoder stays fixed during RAG fine-tuning, and which components are fine-tuned?",
+      "anchor_pages": [4],
+      "evidence_requirements": [
+        ["keep the document encoder (and index) fixed"],
+        ["fine-tuning the query encoder"],
+        ["BART generator"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_frozen_encoder_zh",
+      "paper": "rag",
+      "language": "zh",
+      "query": "RAG 微调时哪个编码器保持固定，又微调了哪些组件？",
+      "anchor_pages": [4],
+      "evidence_requirements": [
+        ["keep the document encoder (and index) fixed"],
+        ["fine-tuning the query encoder"],
+        ["BART generator"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_decoding_en",
+      "paper": "rag",
+      "language": "en",
+      "query": "How does Fast Decoding approximate Thorough Decoding for RAG-Sequence?",
+      "anchor_pages": [4],
+      "evidence_requirements": [
+        ["additional forward pass for each document"],
+        ["avoids the need to run additional forward passes"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_decoding_zh",
+      "paper": "rag",
+      "language": "zh",
+      "query": "RAG-Sequence 的快速解码如何近似彻底解码？",
+      "anchor_pages": [4],
+      "evidence_requirements": [
+        ["additional forward pass for each document"],
+        ["avoids the need to run additional forward passes"]
+      ],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_no_answer_en",
+      "paper": "rag",
+      "language": "en",
+      "query": "What ImageNet top-1 image classification accuracy does the RAG paper report?",
+      "anchor_pages": [],
+      "known_irrelevant_pages": []
+    },
+    {
+      "id": "rag_no_answer_zh",
+      "paper": "rag",
+      "language": "zh",
+      "query": "RAG 论文报告的 ImageNet 图像分类 top-1 准确率是多少？",
+      "anchor_pages": [],
+      "known_irrelevant_pages": []
+    }
+  ]
+}

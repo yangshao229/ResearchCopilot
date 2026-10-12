@@ -1,0 +1,43 @@
+{
+  "dataset_id": "m8.4p-independent-candidate-expansion-spans-v1",
+  "parent_dataset_id": "m8.4i-independent-rag-paper-v1",
+  "paper_sha256": "23e3249e9a1e75418d82efecab0ea8c4d033b89c93742f63208d47ce01f21233",
+  "support_markers": {
+    "rag_memory_en": [
+      "parametric memory is a pre-trained seq2seq transformer",
+      "non-parametric memory is a dense vector index of Wikipedia"
+    ],
+    "rag_memory_zh": [
+      "parametric memory is a pre-trained seq2seq transformer",
+      "non-parametric memory is a dense vector index of Wikipedia"
+    ],
+    "rag_sequence_token_en": [
+      "RAG-Sequence, the model uses the same document to predict each target token",
+      "RAG-Token, can predict each target token based on a different document"
+    ],
+    "rag_sequence_token_zh": [
+      "RAG-Sequence, the model uses the same document to predict each target token",
+      "RAG-Token, can predict each target token based on a different document"
+    ],
+    "rag_frozen_encoder_en": [
+      "keep the document encoder (and index) fixed",
+      "fine-tuning the query encoder",
+      "BART generator"
+    ],
+    "rag_frozen_encoder_zh": [
+      "keep the document encoder (and index) fixed",
+      "fine-tuning the query encoder",
+      "BART generator"
+    ],
+    "rag_decoding_en": [
+      "additional forward pass for each document",
+      "avoids the need to run additional forward passes"
+    ],
+    "rag_decoding_zh": [
+      "additional forward pass for each document",
+      "avoids the need to run additional forward passes"
+    ],
+    "rag_no_answer_en": [],
+    "rag_no_answer_zh": []
+  }
+}
